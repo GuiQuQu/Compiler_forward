@@ -1,0 +1,12 @@
+*terminator
+c
+d
+*production
+S -> C C
+C -> c C
+C -> d
+*startSym
+S
+
+
+

@@ -1,0 +1,177 @@
+# 程序入口
+program -> func_declaration
+program -> func_use SEMI;
+# 函数过程
+func_declaration -> basic_type   ID LP( arguments )RP block
+
+basic_type -> INT
+basic_type -> FLOAT
+basic_type -> CHAR
+basic_type -> BOOLEAN
+#函数形参
+arguments -> type id COMMA, arguments
+arguments -> type id
+arguments -> epsilon
+
+type -> basic_type
+type -> type LB[ NUM RB]
+type -> struct type
+# 函数调用
+func_use -> id LP(real_arguments RP)
+# 函数实参
+real_arguments -> exper COMMA, real_arguments
+real_arguments -> exper
+
+#声明语句(普通类型和记录型声明)
+declaration -> type list COMMA;
+declaration -> struct dec_block list COMMA;
+
+list -> ID COMMA; list
+list -> ID
+
+dec_block -> LC{ dec_statements RC}
+
+# 只有声明语句
+dec_statements -> declaration   dec_statements
+dec_statements -> declaration
+
+#表达式以及赋值语句
+exper -> exper PLUS+  term
+exper -> exper MINUS- term
+exper -> term
+
+term ->  term STAR* unary
+term -> term DIV/ unary
+term -> unary
+
+unary -> NOT! unary
+unary -> MINUS- unary
+unary -> factor
+
+factor -> left
+factor -> REAL
+factor -> NUM
+factor -> func_use
+factor -> LP( exper RP)
+factor -> TRUE
+factor -> FALSE
+
+# 关系表达式
+relation -> exper RELOP exper
+# 单独一个表达式非0为真，0为假
+relation -> exper
+
+# 赋值语句(函数组赋值)
+assgin_stat -> left ASSGINOP = exper
+left -> ID
+left -> experlist RB]
+experlist -> experlist,exper
+experlist -> id LB[ exper
+
+# 分支语句
+if_stat -> if LP( relation  RP) ifblock if_mid if_end
+if_stat -> if LP( relation RP)
+
+if_end -> else ifblock
+if_mid -> else if LP( relation  RP) ifblock if_mid
+if_mid -> epilson
+
+
+ifblock -> block
+ifblock -> assgin_stat
+ifblock -> declaration
+ifblock -> func_use SEMI;
+#循环语句
+loop -> dowhile
+loop -> whileloop
+
+dowhile -> do block while LP( relation RP)
+whileloop -> while LP(  relation RP) block
+
+#程序块
+block -> LC{ statements RC}
+
+statements -> statement statements
+statements -> statement
+
+#一条程序语句
+statement -> declaration
+statement -> assgin_stat
+statement -> if_stat
+statement -> loop
+statement -> func_use SEMI;
+
+
+
+
+
+Program -> Process
+Program -> Stmt
+Program -> epsilon
+Program -> Program Process
+Program -> Program Stmt
+#声明语句,一次声明多个变量(普通变量和记录型)
+Decl -> Type Content ; Decl
+Decl -> Type Content
+Content -> id
+Content -> Content , id
+Decl -> epsilon
+Type -> B C
+Type -> Record { Decl }
+Record -> struct
+B -> int
+B -> float
+B -> boolean
+B -> char
+C -> [ integer ] C
+C -> epsilon
+# 过程声明 基本数据类型或者是记录型的名字 struct student func1(int a1,int a2){ a1=10; a2=10;}
+Process -> RT  id ( Argu ) { Stmt }
+RT -> B
+RT -> Record id
+# 表示一条程序语句
+Stmt -> Stmt  One
+Stmt -> One
+One -> Decl
+Argu -> epsilon
+Argu -> RT id
+Argu -> Argu , RT id
+#表达式
+Exper -> Exper + Term
+Exper -> Exper - Term
+Exper -> Term
+Term -> Term * Unary
+Term -> Term / Unary
+Term -> Term % Unary
+Term -> Unary
+Unary -> ( Exper )
+Unary -> id
+Unary -> integer
+Unary -> real
+#赋值语句 id[1][2]
+One -> Left = Exper ;
+Left -> id End
+End -> epsilon
+End -> [ integer ]
+End -> [ id ]
+End -> [ integer ] End
+End -> [ id ] End
+# 关系表达式
+Relation1 -> Relation1 || Relation2
+Relation1 -> Relation2
+Relation2 -> Relation2 && Relation3
+Relation2 -> Relation3
+Relation3 -> ! Relation3
+Relation3 -> Exper Relop Exper
+Relation3 -> ( Relation1 )
+Relop -> ==
+Relop -> >=
+Relop -> <=
+Relop -> >
+Relop -> <
+Relop -> !=
+#条件语句
+One -> if ( Relation1 ) { Stmt }
+One -> if ( Relation1 ) { Stmt } else { Stmt }
+#循环语句
+One -> while ( relation ) { Stmt }
