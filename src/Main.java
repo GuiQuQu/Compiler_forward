@@ -20,7 +20,7 @@ public class Main {
         TokenAnalysis ta = new TokenAnalysis(FilePath);
         ta.tokenAnalysis();
         ta.PrintResult(ta.getResult());
-        Parser parser =new Parser("src/parser/grammar/grammar.txt");
+        Parser parser =new Parser("src/parser/grammar/grammar4.txt");
 //        Parser parser = new Parser("src/parser/grammar/grammar.txt","analysisTable.txt");
         if (ta.getError().size() > 0) {
             throw new Exception("请先处理词法错误!");

@@ -7,7 +7,7 @@ integer
 character
 # 浮点数
 real
-( 
+(
 )
 [
 ]
@@ -44,7 +44,7 @@ float
 boolean
 char
 while
-if 
+if
 else
 do
 return
@@ -60,7 +60,6 @@ external_declaration -> declaration
 # 声明语句
 declaration -> type_specifier ;
 declaration -> type_specifier init_declarator_list ;
-#declaration_specifiers -> type_specifier
 type_specifier -> int
 type_specifier -> float
 type_specifier -> boolean
@@ -76,6 +75,7 @@ struct_declaration -> type_specifier struct_declarator_list
 struct_declarator_list -> struct_declarator
 struct_declarator_list -> struct_declarator_list , struct_declarator
 struct_declarator -> declarator
+# 结构体的位域，说明结构体中元素所占的位数
 struct_declarator -> : constant_expression
 struct_declarator -> declarator : constant_expression
 #
@@ -86,10 +86,15 @@ init_declarator -> declarator = initializer
 declarator -> direct_declarator
 direct_declarator -> id
 direct_declarator -> ( declarator )
+# 数组声明与使用
 direct_declarator -> direct_declarator [ constant_expression ]
+# 用于数组声明 char[] a = "a123"
 direct_declarator -> direct_declarator [ ]
+# 函数声明
 direct_declarator -> direct_declarator ( parameter_list )
+# 函数使用
 direct_declarator -> direct_declarator ( identifier_list )
+#空参
 direct_declarator -> direct_declarator ( )
 # id列表
 identifier_list -> id
@@ -99,16 +104,6 @@ parameter_list -> parameter_declaration
 parameter_list -> parameter_list , parameter_declaration
 parameter_declaration -> type_specifier declarator
 parameter_declaration -> type_specifier
-#parameter_declaration -> type_specifier abstract_declarator
-# 抽象参数，没有参数名
-#abstract_declarator -> direct_abstract_declarator
-#direct_abstract_declarator -> ( abstract_declarator )
-#direct_abstract_declarator -> [ ]
-#direct_abstract_declarator -> [ constant_expression ]
-#direct_abstract_declarator -> direct_abstract_declarator [ ]
-#direct_abstract_declarator -> ( )
-#direct_abstract_declarator -> ( parameter_list )
-#direct_abstract_declarator -> direct_abstract_declarator ( parameter_list )
 # 变量初始化
 initializer -> assignment_expression
 initializer -> { initializer_list }
@@ -135,6 +130,7 @@ statement -> expression_statement
 statement_list -> statement
 statement_list -> statement_list statement
 # 选择语句
+# 文法具有二义性,可以手动消除二义性
 selection_statement -> if ( expression ) statement
 selection_statement -> if ( expression ) statement else statement
 # 迭代语句
@@ -177,11 +173,6 @@ multiplicative_expression -> unary_expression
 multiplicative_expression -> multiplicative_expression * unary_expression
 multiplicative_expression -> multiplicative_expression / unary_expression
 multiplicative_expression -> multiplicative_expression % unary_expression
-#cast_expression -> unary_expression
-#cast_expression -> ( type_name ) cast_expression
-#type_name -> type_specifier
-#type_name -> type_specifier abstract_declarator
-############ type_name
 # 一元表达式
 unary_expression -> postfix_expression
 unary_expression -> ++ postfix_expression

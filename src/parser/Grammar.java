@@ -147,13 +147,13 @@ public class Grammar {
     public void augmentGrammar() {
         LeftNode lf = new LeftNode(new RightNode("augmentStart"));
         List<RightNode> rightNodes = new ArrayList<>();
-        rightNodes.add(startSym);
+        rightNodes.add(startSym); //augmentStart -> program
         lf.setRight(rightNodes);
         productions.add(lf); //添加增广文法产生式
 //        startSym = lf.getValue();
 //        symbol.add(startSym);
-        startNum = productions.size() - 1;
-        no_terminator.add(lf.getValue());
+        startNum = productions.size() - 1;  //开始产生式
+        no_terminator.add(lf.getValue()); //将增广开始符号加入非终结符
         augmentedStart = lf.getValue();
     }
 

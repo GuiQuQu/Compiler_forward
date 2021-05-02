@@ -35,17 +35,18 @@ public class Parser {
     private Map<LR1TableKey, LR1TableValue> SGoto = new HashMap<>();
     private boolean isError = false;
     static public Logger logger = Logger.getLogger("Logger");
+    private Map<RightNode, Integer> priority = new HashMap<>();
 
     static {
         logger.setLevel(Level.ALL);
-        ConsoleHandler consoleHandler = new ConsoleHandler();
-        consoleHandler.setLevel(Level.FINEST);
-        logger.addHandler(consoleHandler);
-
+//        ConsoleHandler consoleHandler = new ConsoleHandler();
+//        consoleHandler.setLevel(Level.FINEST);
+//        logger.addHandler(consoleHandler);
     }
 
     public Parser(String grammar_path) throws Exception {
         this.grammar = new Grammar(grammar_path);
+        priority.put(new RightNode("else"), 1);  // else 悬空问题
         grammar.augmentGrammar();
         grammar.calFIRST();
         createLR1AnalysisTable();
@@ -286,8 +287,8 @@ public class Parser {
      */
     public void createLR1AnalysisTable() throws Exception {
         getLR1Items();
-        PrintLR1List();
-        System.out.println("正在计算语法分析表");
+//        PrintLR1List();
+        System.out.println("正在计算语法分析表...");
         for (int i = 0; i < lr1list.size(); i++) {
             List<LR1item> state_i = lr1list.get(i); // 对应表的行，一行表示一个状态
             List<RightNode> allTerminator = new ArrayList<>(grammar.getTerminator());
@@ -297,7 +298,7 @@ public class Parser {
                 boolean isWrite = false;
                 for (LR1item lr1item : state_i) { // 对应状态i的一条产生式
                     LeftNode production = grammar.getProductions().get(lr1item.getGrammarNum());
-                    if (lr1item.getDotPoint() < production.getRight().size() - 1) { //只可能移进
+                    if (lr1item.getDotPoint() < production.getRight().size()) { //只可能移进
                         if (production.getRight().get(lr1item.getDotPoint()).equals(rightNode)) {
                             List<LR1item> goto_i_a = Goto(state_i, rightNode); // 状态i通过a转移到状态 goto_i_a
                             int j_index = lr1list.indexOf(goto_i_a);
@@ -342,17 +343,24 @@ public class Parser {
      */
     private void addAction(LR1TableKey key, LR1TableValue value) throws Exception {
         if (Action.containsKey(key)) {
-            if (!Action.get(key).equals(value)) {
-                logger.info(printStateI(key.getStateNum()));
-                if (value.getAction().equals("reduce")) {
-                    logger.info(value.toString() + ":" + grammar.getProductions().get(value.getUse()));
+            if (!Action.get(key).equals(value)) {  //可能会用不同的产生式均要求移入,但是操作不同一定发生了冲突
+                if (priority.get(key.getRn()) != null && priority.get(key.getRn()) > 0) { // 二义性优先级要求 悬空else
+                    Action.put(key, value);
+                    logger.info("else悬空问题");
+                    System.out.println("填写Action表项" + key + "->" + value);
+                } else {
+                    logger.info(printStateI(key.getStateNum())); //记录冲突的状态
+                    //记录冲突中规约使用的产生式
+                    if (value.getAction().equals("reduce")) {
+                        logger.info(value.toString() + ":" + grammar.getProductions().get(value.getUse()));
+                    }
+                    if (Action.get(key).getAction().equals("reduce")) {
+                        logger.info(Action.get(key) + ":" + grammar.getProductions().get(Action.get(key).getUse()));
+                    }
+                    throw new Exception("Action出现冲突,表项为" + key.toString() + "冲突值为[" + Action.get(key) + "," + value + "]");
                 }
-                if (Action.get(key).getAction().equals("reduce")) {
-                    logger.info(Action.get(key) + ":" + grammar.getProductions().get(Action.get(key).getUse()));
-                }
-                throw new Exception("Action出现冲突,表项为" + key.toString() + "冲突值为[" + Action.get(key) + "," + value + "]");
             }
-        } else if (!Action.containsKey(key)) {
+        } else { //不冲突
             Action.put(key, value);
             System.out.println("填写Action表项" + key + "->" + value);
         }
@@ -384,7 +392,7 @@ public class Parser {
         boolean notChange = true;
         do {
             notChange = true;
-            for (List<LR1item> lr1itemList : list) {
+            for (List<LR1item> lr1itemList : list) {  //对于一个状态i
                 for (RightNode rightNode : grammar.getSymbol()) {
                     List<LR1item> new_lr1List = Goto(lr1itemList, rightNode);
                     if (new_lr1List.size() > 0 && !lr1list.contains(new_lr1List)) {
@@ -402,21 +410,21 @@ public class Parser {
      * 计算一个LR1项集的闭包CLOSURE(I)
      */
     public List<LR1item> closure(List<LR1item> lr1items) {
-        List<LR1item> result = new ArrayList<>(lr1items);
+        List<LR1item> result = new ArrayList<>(lr1items); //添加核心项
         List<LR1item> list = new ArrayList<>(result);
         boolean notChange = true;
         do {
             notChange = true;
             List<LR1item> new_list = new ArrayList<>(); //新获取的LR1项
-            for (LR1item item : list) {
+            for (LR1item item : list) { //对于I中的每一项 A-> alpha .B beta
                 LeftNode production = grammar.getProductions().get(item.getGrammarNum()); // A-> alpha .B beta
                 if (item.getDotPoint() < production.getRight().size()) {  //后面还有文法符号
                     RightNode B = production.getRight().get(item.getDotPoint());
                     RightNode beta = RightNode.epsilon; // 闭包新增的是First(beta a)
-                    if (item.getDotPoint() + 1 <= production.getRight().size() - 1) {
+                    if (item.getDotPoint() + 1 < production.getRight().size()) {
                         beta = production.getRight().get(item.getDotPoint() + 1);
                     }
-                    for (int i = 0; i < grammar.getProductions().size(); i++) {
+                    for (int i = 0; i < grammar.getProductions().size(); i++) {  //对于G`中的每一个产生式 B->r
                         if (grammar.getProductions().get(i).getValue().equals(B)) {
                             Set<RightNode> firstSet = first(beta, item.getForward());
                             for (RightNode rightNode : firstSet) {
@@ -441,7 +449,6 @@ public class Parser {
      */
     private Set<RightNode> first(RightNode beta, RightNode a) {
         Set<RightNode> set = new HashSet<>();
-
         if (RightNode.epsilon.equals(beta)) {
             set.add(a);
             return set;
@@ -458,17 +465,16 @@ public class Parser {
 
     /**
      * 计算GOTO(I,X)
+     * @return 返回内核项
      */
     public List<LR1item> Goto(List<LR1item> i, RightNode x) {
         List<LR1item> j = new ArrayList<>();
         for (LR1item item : i) {
             LeftNode production = grammar.getProductions().get(item.getGrammarNum());
             //可以向后移动一个位置
-            if (item.getDotPoint() < production.getRight().size() - 1 && production.getRight().get(item.getDotPoint()).equals(x)) {
+            if (item.getDotPoint() < production.getRight().size() && production.getRight().get(item.getDotPoint()).equals(x)) {
                 LR1item lr1i = new LR1item(item.getGrammarNum(), item.getDotPoint() + 1, item.getForward());
-                if (!j.contains(lr1i)) {
-                    j.add(lr1i);
-                }
+                j.add(lr1i);
             }
         }
         return closure(j);
@@ -483,14 +489,37 @@ public class Parser {
         List<LR1item> state = lr1list.get(i);
         for (LR1item item : state) {
             LeftNode production = grammar.getProductions().get(item.getGrammarNum());
-            sb.append(production).append(",").append(item.getDotPoint()).append(",").append(item.getForward()).append('\n');
+            sb.append(production.getValue());
+            sb.append(" -> ");
+            boolean add =false;
+            for (int j = 0; j < production.getRight().size(); j++) {
+                if (item.getDotPoint()==j){
+                    sb.append(" /DOT/");
+                    add=true;
+                }
+                sb.append(" ");
+                sb.append(production.getRight().get(j));
+            }
+            if (!add){
+                sb.append(" /DOT/");
+            }
+            sb.append(" /FORWARD/ ").append(item.getForward()).append('\n');
+            //.append(",").append(item.getDotPoint())
         }
-        return sb.toString().trim();
+        return sb.toString();
     }
 
     public void PrintLR1List() {
         for (int i = 0; i < lr1list.size(); i++) {
             System.out.println(printStateI(i));
         }
+    }
+
+    public String PrintLR1List(int begin, int end) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = begin; i < end; i++) {
+            sb.append(printStateI(i));
+        }
+        return sb.toString();
     }
 }
