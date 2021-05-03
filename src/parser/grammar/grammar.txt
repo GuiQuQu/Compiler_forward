@@ -7,7 +7,7 @@ integer
 character
 # 浮点数
 real
-( 
+(
 )
 [
 ]
@@ -44,7 +44,7 @@ float
 boolean
 char
 while
-if 
+if
 else
 do
 return
@@ -60,7 +60,6 @@ external_declaration -> declaration
 # 声明语句
 declaration -> type_specifier ;
 declaration -> type_specifier init_declarator_list ;
-#declaration_specifiers -> type_specifier
 type_specifier -> int
 type_specifier -> float
 type_specifier -> boolean
@@ -72,12 +71,13 @@ struct_specifier -> struct { struct_declaration_list }
 struct_specifier -> struct id
 struct_declaration_list -> struct_declaration
 struct_declaration_list -> struct_declaration_list struct_declaration
-struct_declaration -> type_specifier struct_declarator_list
+struct_declaration -> type_specifier struct_declarator_list ;
 struct_declarator_list -> struct_declarator
 struct_declarator_list -> struct_declarator_list , struct_declarator
 struct_declarator -> declarator
-struct_declarator -> : constant_expression
-struct_declarator -> declarator : constant_expression
+# 结构体的位域，说明结构体中元素所占的位数
+# struct_declarator -> : constant_expression
+# struct_declarator -> declarator : constant_expression
 #
 init_declarator_list -> init_declarator
 init_declarator_list -> init_declarator_list , init_declarator
@@ -97,21 +97,14 @@ identifier_list -> identifier_list , id
 # 形参列表
 parameter_list -> parameter_declaration
 parameter_list -> parameter_list , parameter_declaration
+# 可能二义性
 parameter_declaration -> type_specifier declarator
 parameter_declaration -> type_specifier
-#parameter_declaration -> type_specifier abstract_declarator
-# 抽象参数，没有参数名
-#abstract_declarator -> direct_abstract_declarator
-#direct_abstract_declarator -> ( abstract_declarator )
-#direct_abstract_declarator -> [ ]
-#direct_abstract_declarator -> [ constant_expression ]
-#direct_abstract_declarator -> direct_abstract_declarator [ ]
-#direct_abstract_declarator -> ( )
-#direct_abstract_declarator -> ( parameter_list )
-#direct_abstract_declarator -> direct_abstract_declarator ( parameter_list )
 # 变量初始化
 initializer -> assignment_expression
+# 单元素数组
 initializer -> { initializer_list }
+# 多元素数组
 initializer -> { initializer_list , }
 initializer_list -> initializer
 initializer_list -> initializer_list , initializer
@@ -121,8 +114,8 @@ declaration_list -> declaration_list declaration
 # 函数定义
 # int func1(int a, int b) {a=1,b=2}
 function_definition -> type_specifier declarator compound_statement
-function_definition -> declarator  declaration_list compound_statement
-function_definition -> declarator compound_statement
+#function_definition -> declarator  declaration_list compound_statement
+#function_definition -> declarator compound_statement
 # 程序块
 compound_statement -> { }
 compound_statement -> { statement_list }
@@ -132,9 +125,12 @@ statement -> compound_statement
 statement -> selection_statement
 statement -> iteration_statement
 statement -> expression_statement
+statement -> jump_statement
 statement_list -> statement
 statement_list -> statement_list statement
+jump_statement -> return expression ;
 # 选择语句
+# 文法具有二义性,可以手动消除二义性
 selection_statement -> if ( expression ) statement
 selection_statement -> if ( expression ) statement else statement
 # 迭代语句
@@ -146,8 +142,8 @@ expression_statement -> expression ;
 expression -> assignment_expression
 expression -> expression , assignment_expression
 # 赋值表达式
-assignment_expression -> unary_expression assignment_operator assignment_expression
 assignment_expression -> conditional_expression
+assignment_expression -> unary_expression assignment_operator assignment_expression
 # 赋值符号
 assignment_operator -> =
 assignment_operator -> +=
@@ -156,32 +152,28 @@ assignment_operator -> *=
 assignment_operator -> /=
 # 条件表达式
 conditional_expression -> logical_or_expression
-logical_or_expression -> logical_or_expression || logical_and_expression
 logical_or_expression -> logical_and_expression
-logical_and_expression -> logical_and_expression && equality_expression
+logical_or_expression -> logical_or_expression || logical_and_expression
 logical_and_expression -> equality_expression
+logical_and_expression -> logical_and_expression && equality_expression
 #
-equality_expression -> equality_expression == relation_expression
-equality_expression -> equality_expression != relation_expression
-equality_expression -> relation_expression
+equality_expression -> relational_expression
+equality_expression -> equality_expression == relational_expression
+equality_expression -> equality_expression != relational_expression
 #
-relation_expression -> relational_expression > additive_expresion
-relation_expression -> relational_expression < additive_expresion
-relation_expression -> relational_expression >= additive_expresion
-relation_expression -> relational_expression <= additive_expresion
+relational_expression -> additive_expression
+relational_expression -> relational_expression > additive_expression
+relational_expression -> relational_expression < additive_expression
+relational_expression -> relational_expression >= additive_expression
+relational_expression -> relational_expression <= additive_expression
 #
-additive_expresion -> additive_expresion + multiplicative_expression
-additive_expresion -> additive_expresion - multiplicative_expression
-additive_expresion -> multiplicative_expression
+additive_expression -> multiplicative_expression
+additive_expression -> additive_expression + multiplicative_expression
+additive_expression -> additive_expression - multiplicative_expression
 multiplicative_expression -> unary_expression
 multiplicative_expression -> multiplicative_expression * unary_expression
 multiplicative_expression -> multiplicative_expression / unary_expression
 multiplicative_expression -> multiplicative_expression % unary_expression
-#cast_expression -> unary_expression
-#cast_expression -> ( type_name ) cast_expression
-#type_name -> type_specifier
-#type_name -> type_specifier abstract_declarator
-############ type_name
 # 一元表达式
 unary_expression -> postfix_expression
 unary_expression -> ++ postfix_expression
@@ -195,6 +187,7 @@ postfix_expression -> primary_expression
 postfix_expression -> postfix_expression [ expression ]
 postfix_expression -> postfix_expression ( )
 postfix_expression -> postfix_expression ( argument_expression_list )
+# postfix_expression -> postfix_expression . id
 postfix_expression -> postfix_expression ++
 postfix_expression -> postfix_expression --
 argument_expression_list -> assignment_expression
@@ -204,8 +197,9 @@ primary_expression -> id
 primary_expression -> real
 primary_expression -> integer
 primary_expression -> character
+primary_expression -> true
+primary_expression -> false
+# primary_expression -> string
 primary_expression -> ( expression )
 *startSym
 program
-
-

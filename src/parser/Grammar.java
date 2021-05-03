@@ -157,6 +157,33 @@ public class Grammar {
         augmentedStart = lf.getValue();
     }
 
+    public void calFIRST2() {
+        System.out.println("FIRST...");
+        //init
+        createValueForFirst();
+        //终结符的FIRST集
+        for (RightNode rightNode : terminator) {
+            addItemToFirst(rightNode, rightNode);
+        }
+        int no_te_i = 0;
+        while (true) {
+            //当前非终结终结符是no_te_i
+            //寻找no_te_i的所有产生式
+            for (LeftNode production : productions) {
+                //空串产生式X-> epsilon
+                if (production.getRight().size() == 1 && production.getRight().get(0).equals(RightNode.epsilon)) {
+                    continue;
+                }
+                int i = 0;
+                while (i < production.getRight().size()) {
+                    i++;
+                    return;
+
+                }
+            }
+        }
+    }
+
     public void calFIRST() {
         System.out.println("FIRST...");
         //init
@@ -170,34 +197,59 @@ public class Grammar {
             haveChange = false;
             for (RightNode node : no_terminator) { //对于每一个非终结符，寻该他的所有产生式
                 for (LeftNode production : productions) {
-                    if (production.getValue().equals(node)) {
+                    if (production.getValue().equals(node)) { //该产生式左部是改非终结符
                         //空串产生式
                         if (production.getRight().size() == 1 && production.getRight().get(0).equals(RightNode.epsilon)) {
-                            haveChange = addItemToFirst(production.getValue(), RightNode.epsilon);
+                            if (addItemToFirst(production.getValue(), RightNode.epsilon)) {
+                                haveChange = true;
+                            }
+
                             continue;
                         }
+                        // X->Y1Y2...
                         int i = 0;
                         while (i < production.getRight().size()) {
                             if (production.getRight().get(i).isTerminator()) { //当前字母是终结符
-                                haveChange = addItemToFirst(production.getValue(), production.getRight().get(0));
+                                if (addItemToFirst(production.getValue(), production.getRight().get(0))) {
+                                    haveChange = true;
+                                }
                                 break;
                             }
                             if (!production.getRight().get(i).isTerminator()) { //当前字母不是终结符
                                 if (firsts.get(production.getRight().get(i)).contains(RightNode.epsilon)) { //该非终结符可以产生空串
                                     i++;
                                 } else {
-                                    haveChange = addItemToFirst(production.getValue(), firsts.get(production.getRight().get(i)));
+                                    //不是自己
+                                    if (!production.getValue().equals(production.getRight().get(i))) {
+                                        if (addItemToFirst(production.getValue(), firsts.get(production.getRight().get(i))))
+                                            haveChange = true;
+                                    }
                                     break;
                                 }
                             }
                         }
                         if (i == production.getRight().size()) {
-                            haveChange = addItemToFirst(production.getValue(), RightNode.epsilon);
+                            if (addItemToFirst(production.getValue(), RightNode.epsilon)){
+                                haveChange = true;
+                            }
+
                         }
                     }
                 }
             }
         }
+    }
+
+    public String printFIRST() {
+        StringBuilder sb = new StringBuilder();
+        for (RightNode rightNode : firsts.keySet()) {
+            sb.append(rightNode.getValue()).append("->").append("{");
+            for (RightNode node : firsts.get(rightNode)) {
+                sb.append(node.getValue()).append(",");
+            }
+            sb.append("}").append("\n");
+        }
+        return sb.toString();
     }
 
     public void calFIRST1() {

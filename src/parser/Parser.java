@@ -16,7 +16,7 @@ import java.util.logging.Logger;
  * @DateTime: 20:22 2021/4/23
  * 按照LR文法来进行语法分析
  * 表示
- * 1. LR1项集使用 List<LR1item>表示
+ * 1. LR1项集使用 Set<LR1item>表示
  * 2. 文法符号使用RightNode表示
  * <p>
  * 待处理事项:
@@ -30,7 +30,7 @@ public class Parser {
     //语法分析器的文法
     private Grammar grammar;
     //LR1分析表,key
-    private List<List<LR1item>> lr1list = new ArrayList<>();
+    private List<Set<LR1item>> lr1list = new ArrayList<>();
     private Map<LR1TableKey, LR1TableValue> Action = new HashMap<>();
     private Map<LR1TableKey, LR1TableValue> SGoto = new HashMap<>();
     private boolean isError = false;
@@ -57,8 +57,8 @@ public class Parser {
     public Parser(String grammar_path, String analysisTable) throws IOException {
         this.grammar = new Grammar(grammar_path);
         grammar.augmentGrammar();
-        grammar.calFIRST();
-        getLR1Items();
+//        grammar.calFIRST();
+//        getLR1Items();
         loadAnalysisTable(analysisTable);
     }
 
@@ -273,7 +273,7 @@ public class Parser {
                 System.out.println("error");
                 isError = true;
                 StringBuilder sb = new StringBuilder();
-                int line = symStack.peek().getLineNum();
+                int line = tokens.get(i).getLineNum();
                 sb.append(tokens.get(i).getTokenDescription());
                 System.out.println(errorHandle(line, sb.toString()));
                 break;
@@ -290,7 +290,7 @@ public class Parser {
 //        PrintLR1List();
         System.out.println("正在计算语法分析表...");
         for (int i = 0; i < lr1list.size(); i++) {
-            List<LR1item> state_i = lr1list.get(i); // 对应表的行，一行表示一个状态
+           Set<LR1item> state_i = lr1list.get(i); // 对应表的行，一行表示一个状态
             List<RightNode> allTerminator = new ArrayList<>(grammar.getTerminator());
             allTerminator.add(RightNode.end);  //为终结符集合中添加结束符号
             //action表
@@ -300,7 +300,7 @@ public class Parser {
                     LeftNode production = grammar.getProductions().get(lr1item.getGrammarNum());
                     if (lr1item.getDotPoint() < production.getRight().size()) { //只可能移进
                         if (production.getRight().get(lr1item.getDotPoint()).equals(rightNode)) {
-                            List<LR1item> goto_i_a = Goto(state_i, rightNode); // 状态i通过a转移到状态 goto_i_a
+                            Set<LR1item> goto_i_a = Goto(state_i, rightNode); // 状态i通过a转移到状态 goto_i_a
                             int j_index = lr1list.indexOf(goto_i_a);
                             if (j_index > 0) {
                                 addAction(new LR1TableKey(i, rightNode), new LR1TableValue("shift", j_index));
@@ -327,7 +327,7 @@ public class Parser {
                 if (x.equals(grammar.getAugmentedStart())) {
                     continue;
                 }
-                List<LR1item> goto_i_x = Goto(state_i, x);
+                Set<LR1item> goto_i_x = Goto(state_i, x);
                 int j_index = lr1list.indexOf(goto_i_x);
                 if (j_index > 0) {
                     addGoto(new LR1TableKey(i, x), new LR1TableValue("", j_index));
@@ -385,18 +385,18 @@ public class Parser {
      */
     public void getLR1Items() {
         System.out.println("正在计算文法的LR1项集族...");
-        List<LR1item> start = new ArrayList<>();
+        Set<LR1item> start = new HashSet<>();
         start.add(new LR1item(grammar.getStartNum(), 0, RightNode.end));
         lr1list.add(closure(start));
-        List<List<LR1item>> list = new ArrayList<>(lr1list);
+        List<Set<LR1item>> list = new ArrayList<>(lr1list);
         boolean notChange = true;
         do {
             notChange = true;
-            for (List<LR1item> lr1itemList : list) {  //对于一个状态i
+            for (Set<LR1item> lr1itemSet : list) {  //对于一个状态i
                 for (RightNode rightNode : grammar.getSymbol()) {
-                    List<LR1item> new_lr1List = Goto(lr1itemList, rightNode);
-                    if (new_lr1List.size() > 0 && !lr1list.contains(new_lr1List)) {
-                        lr1list.add(new_lr1List);
+                    Set<LR1item> new_lr1Set = Goto(lr1itemSet, rightNode);
+                    if (new_lr1Set.size() > 0 && !lr1list.contains(new_lr1Set)) {
+                        lr1list.add(new_lr1Set);
                         notChange = false;
                     }
                 }
@@ -409,13 +409,13 @@ public class Parser {
     /**
      * 计算一个LR1项集的闭包CLOSURE(I)
      */
-    public List<LR1item> closure(List<LR1item> lr1items) {
-        List<LR1item> result = new ArrayList<>(lr1items); //添加核心项
-        List<LR1item> list = new ArrayList<>(result);
+    public Set<LR1item> closure(Set<LR1item> lr1items) {
+        Set<LR1item> result = new HashSet<>(lr1items); //添加核心项
+        Set<LR1item> list = new HashSet<>(result);
         boolean notChange = true;
         do {
             notChange = true;
-            List<LR1item> new_list = new ArrayList<>(); //新获取的LR1项
+            Set<LR1item> new_list = new HashSet<>(); //新获取的LR1项
             for (LR1item item : list) { //对于I中的每一项 A-> alpha .B beta
                 LeftNode production = grammar.getProductions().get(item.getGrammarNum()); // A-> alpha .B beta
                 if (item.getDotPoint() < production.getRight().size()) {  //后面还有文法符号
@@ -445,7 +445,7 @@ public class Parser {
     }
 
     /**
-     * closure的辅助函数
+     * closure的辅助函数,计算first (beta a)
      */
     private Set<RightNode> first(RightNode beta, RightNode a) {
         Set<RightNode> set = new HashSet<>();
@@ -467,8 +467,8 @@ public class Parser {
      * 计算GOTO(I,X)
      * @return 返回内核项
      */
-    public List<LR1item> Goto(List<LR1item> i, RightNode x) {
-        List<LR1item> j = new ArrayList<>();
+    public Set<LR1item> Goto(Set<LR1item> i, RightNode x) {
+        Set<LR1item> j = new HashSet<>();
         for (LR1item item : i) {
             LeftNode production = grammar.getProductions().get(item.getGrammarNum());
             //可以向后移动一个位置
@@ -486,7 +486,7 @@ public class Parser {
     public String printStateI(int i) {
         StringBuilder sb = new StringBuilder();
         sb.append("I").append(i).append(':').append('\n');
-        List<LR1item> state = lr1list.get(i);
+        Set<LR1item> state = lr1list.get(i);
         for (LR1item item : state) {
             LeftNode production = grammar.getProductions().get(item.getGrammarNum());
             sb.append(production.getValue());

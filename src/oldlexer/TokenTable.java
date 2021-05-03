@@ -135,7 +135,7 @@ public class TokenTable {
             case REMAINDER:
                 return "%";
             case EQUAL:
-                return "=";
+                return "==";
             case GREAT:
                 return ">";
             case GE:
@@ -153,7 +153,7 @@ public class TokenTable {
             case NOT:
                 return "!";
             case ASSIGN:
-                return "==";
+                return "=";
             case COMMA:
                 return ",";
             case SEMICOLON:
@@ -171,7 +171,7 @@ public class TokenTable {
             case RIGHTM:
                 return "]";
             case RIGHTL:
-                return "{";
+                return "}";
             case INTEGER:
                 return "integer";
             case OCTAL:
