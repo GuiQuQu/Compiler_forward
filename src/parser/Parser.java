@@ -203,8 +203,32 @@ public class Parser {
         }
     }
 
-    //层序遍历生成语法分析树
     public Node getAnalTree(List<LeftNode> actionList) {
+        int i = actionList.size() - 1;
+        Node root = new Node(actionList.get(i).getValue(), null); //根节点
+        Stack<Node> stack = new Stack<>();
+        stack.push(root);
+        while (i >= 0 && stack.size() > 0) {
+            Node rn = stack.pop();
+            if (rn.getRn().isTerminator()) {
+                continue;
+            }
+            LeftNode production = actionList.get(i);
+            assert rn.getRn() == production.getValue();
+            List<Node> list = new ArrayList<>();
+            for (int j = 0; j < production.getRight().size(); j++) {
+                Node newNode = new Node(production.getRight().get(j), null);
+                list.add(newNode);
+                stack.push(newNode);
+            }
+            rn.setChildren(list);
+            i--;
+        }
+        return root;
+    }
+
+    //层序遍历生成语法分析树
+    public Node getAnalTree1(List<LeftNode> actionList) {
         int i = actionList.size() - 1;
         Node root = new Node(actionList.get(i).getValue(), null);
         Queue<Node> queue = new LinkedList<>();
@@ -290,7 +314,7 @@ public class Parser {
 //        PrintLR1List();
         System.out.println("正在计算语法分析表...");
         for (int i = 0; i < lr1list.size(); i++) {
-           Set<LR1item> state_i = lr1list.get(i); // 对应表的行，一行表示一个状态
+            Set<LR1item> state_i = lr1list.get(i); // 对应表的行，一行表示一个状态
             List<RightNode> allTerminator = new ArrayList<>(grammar.getTerminator());
             allTerminator.add(RightNode.end);  //为终结符集合中添加结束符号
             //action表
@@ -465,6 +489,7 @@ public class Parser {
 
     /**
      * 计算GOTO(I,X)
+     *
      * @return 返回内核项
      */
     public Set<LR1item> Goto(Set<LR1item> i, RightNode x) {
@@ -491,16 +516,16 @@ public class Parser {
             LeftNode production = grammar.getProductions().get(item.getGrammarNum());
             sb.append(production.getValue());
             sb.append(" -> ");
-            boolean add =false;
+            boolean add = false;
             for (int j = 0; j < production.getRight().size(); j++) {
-                if (item.getDotPoint()==j){
+                if (item.getDotPoint() == j) {
                     sb.append(" /DOT/");
-                    add=true;
+                    add = true;
                 }
                 sb.append(" ");
                 sb.append(production.getRight().get(j));
             }
-            if (!add){
+            if (!add) {
                 sb.append(" /DOT/");
             }
             sb.append(" /FORWARD/ ").append(item.getForward()).append('\n');
