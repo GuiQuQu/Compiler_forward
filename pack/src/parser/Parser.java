@@ -227,7 +227,7 @@ public class Parser {
         return root;
     }
 
-    //层序遍历生成语法分析树(错误，不在使用)
+    //层序遍历生成语法分析树
     public Node getAnalTree1(List<LeftNode> actionList) {
         int i = actionList.size() - 1;
         Node root = new Node(actionList.get(i).getValue(), null);

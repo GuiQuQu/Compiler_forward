@@ -1,0 +1,30 @@
+int main(){
+	int a=0x10;    /*这是注释*/
+	int aa=037;
+	float _b1=0.1e-5;
+	float aaaa=1.11;
+	aa+=1;
+	abc =1**123;
+    String s ="hello";
+    char a ='y';
+	_b1++;
+	boolean c=true;
+	int d =20+-60;
+	 struct  Student{
+        int Sno;
+        char[] Sname;
+     };
+	boolean e = a<=aa && aa>=abc;
+	int[] array =[1,2,4];
+	for (int i=0;i<12;i=i+1){
+        a=a+1;
+	}
+	a=10.0.0;
+	if (a==10.0){
+	    return a;
+	}else{
+	    return b;
+	}
+}
+
+main();
