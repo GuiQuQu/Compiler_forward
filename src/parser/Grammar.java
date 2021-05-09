@@ -18,7 +18,7 @@ public class Grammar {
     private RightNode startSym; // 开始符号
     private Set<RightNode> terminator = new HashSet<>(); //终结符
     private Set<RightNode> no_terminator = new HashSet<>(); //非终结符
-    private Set<RightNode> symbol = new HashSet<>();
+    private Set<RightNode> symbol = new HashSet<>(); //终结符集和非终结符集
     private List<LeftNode> productions = new ArrayList<>(); //产生式
     private File grammar; //文法文件
     private Map<RightNode, Set<RightNode>> firsts = new HashMap<>(); //first集
@@ -70,14 +70,19 @@ public class Grammar {
                 if (strings[i].equals("epsilon")) { //处理空串表达式
                     right.add(RightNode.epsilon);
                 } else {
-                    RightNode rn = new RightNode(strings[i]);
-                    if (terminator.contains(rn)) {
-                        rn.setTerminator(true);
+                    if ("%%".equals(strings[i])) {
+                        left.setSemanticAction(strings[i + 1]);
+                        i++;
                     } else {
-                        rn.setTerminator(false);
-                        no_terminator.add(rn);
+                        RightNode rn = new RightNode(strings[i]);
+                        if (terminator.contains(rn)) {
+                            rn.setTerminator(true);
+                        } else {
+                            rn.setTerminator(false);
+                            no_terminator.add(rn);
+                        }
+                        right.add(rn);
                     }
-                    right.add(rn);
                 }
             }
             left.setRight(right);
@@ -203,7 +208,6 @@ public class Grammar {
                             if (addItemToFirst(production.getValue(), RightNode.epsilon)) {
                                 haveChange = true;
                             }
-
                             continue;
                         }
                         // X->Y1Y2...
@@ -228,8 +232,9 @@ public class Grammar {
                                 }
                             }
                         }
+                        //Y1Y2...均可生成空串
                         if (i == production.getRight().size()) {
-                            if (addItemToFirst(production.getValue(), RightNode.epsilon)){
+                            if (addItemToFirst(production.getValue(), RightNode.epsilon)) {
                                 haveChange = true;
                             }
 

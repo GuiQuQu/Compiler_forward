@@ -54,16 +54,38 @@ false
 *production
 # 开始
 program -> external_declaration
-program -> program external_declaration
-external_declaration -> function_definition
+
+program -> program M1 external_declaration
+
+external_declaration -> M2 function_definition
+M2 -> epsilon
+ {
+  a=new SymbolTable();
+  push(a) //符号表栈
+ }
 external_declaration -> declaration
 # 声明语句
+# 结构体
 declaration -> type_specifier ;
 declaration -> type_specifier init_declarator_list ;
+{
+}
 type_specifier -> int
+{
+    push("type",new INT);
+}
 type_specifier -> float
+{
+    push("type",new FlOAT);
+}
 type_specifier -> boolean
+{
+    push("type",new BOOLEAN);
+}
 type_specifier -> char
+{
+    push("type",new CHAR);
+}
 type_specifier -> struct_specifier
 #结构体
 struct_specifier -> struct id { struct_declaration_list }
@@ -71,72 +93,117 @@ struct_specifier -> struct { struct_declaration_list }
 struct_specifier -> struct id
 struct_declaration_list -> struct_declaration
 struct_declaration_list -> struct_declaration_list struct_declaration
-struct_declaration -> type_specifier struct_declarator_list
+struct_declaration -> type_specifier struct_declarator_list ;
 struct_declarator_list -> struct_declarator
 struct_declarator_list -> struct_declarator_list , struct_declarator
 struct_declarator -> declarator
-# 结构体的位域，说明结构体中元素所占的位数
-# struct_declarator -> : constant_expression
-# struct_declarator -> declarator : constant_expression
 #
 init_declarator_list -> init_declarator
+{
+    condition:
+    top=id
+    top-1=type
+    action:
+    add new SymbolTableEntry(top,top-1);
+    pop();
+    pop();
+}
 init_declarator_list -> init_declarator_list , init_declarator
+{
+    condition:
+    top=id
+    top-1=type
+    action:
+    add new SymbolTableEntry(top,top-1);
+}
 init_declarator -> declarator
+{
+    no action
+}
 init_declarator -> declarator = initializer
 declarator -> direct_declarator
 direct_declarator -> id
-direct_declarator -> ( declarator )
-direct_declarator -> direct_declarator [ constant_expression ]
-direct_declarator -> direct_declarator [ ]
-direct_declarator -> direct_declarator ( parameter_list )
-direct_declarator -> direct_declarator ( identifier_list )
-direct_declarator -> direct_declarator ( )
-# id列表
-identifier_list -> id
-identifier_list -> identifier_list , id
+{
+    push(id.Id)  //id的名字
+}
+direct_declarator -> ( declarator ) #1
+{
+    no action
+}
+# 数组声明
+direct_declarator -> direct_declarator [ constant_expression ] #2
+{
+    condition:
+    top=constant_expression.addr
+    top-1 = id.Id /
+    top-2=type(INT...)
+    action:
+    a=new Array (top,top-2);
+    top-2=a;
+    pop();
+}
+direct_declarator -> direct_declarator [ ] #3
+# 函数声明
+direct_declarator -> direct_declarator M3 ( parameter_list ) #4
+direct_declarator -> direct_declarator M3 ( ) #5
+M3 -> epsilon
+{
+    top id
+    top-1 return type
+}
 # 形参列表
 parameter_list -> parameter_declaration
 parameter_list -> parameter_list , parameter_declaration
-# 可能二义性
+#
 parameter_declaration -> type_specifier declarator
-parameter_declaration -> type_specifier
 # 变量初始化
-initializer -> assignment_expression
+initializer -> assignment_expression #1
+{
+    condition:
+    top=assignment_expression.addr
+    top-1=id
+    top-2=Type
+    action:
+    gen ('=',top,_,top-1);
+    pop();
+}
 # 单元素数组
-initializer -> { initializer_list }
+initializer -> { initializer_list } #2
 # 多元素数组
-initializer -> { initializer_list , }
 initializer_list -> initializer
 initializer_list -> initializer_list , initializer
 constant_expression -> conditional_expression
+
 declaration_list -> declaration
-declaration_list -> declaration_list declaration
+declaration_list -> declaration_list M4 declaration
+
 # 函数定义
 # int func1(int a, int b) {a=1,b=2}
 function_definition -> type_specifier declarator compound_statement
-#function_definition -> declarator  declaration_list compound_statement
-#function_definition -> declarator compound_statement
 # 程序块
 compound_statement -> { }
-compound_statement -> { statement_list }
-compound_statement -> { declaration_list }
-compound_statement -> { declaration_list statement_list }
+compound_statement -> M5 { statement_list }
+compound_statement -> M5 { declaration_list }
+compound_statement -> M5 { declaration_list M6 statement_list }
+M5 -> epsilon
 statement -> compound_statement
 statement -> selection_statement
 statement -> iteration_statement
 statement -> expression_statement
 statement -> jump_statement
 statement_list -> statement
-statement_list -> statement_list statement
+statement_list -> statement_list M6 statement
 jump_statement -> return expression ;
+jump_statement -> return ;
 # 选择语句
 # 文法具有二义性,可以手动消除二义性
-selection_statement -> if ( expression ) statement
-selection_statement -> if ( expression ) statement else statement
+selection_statement -> if ( expression ) M6 statement
+selection_statement -> if ( expression ) M6 statement M7 else M6 statement
+M6 -> epsilon
+M7 -> epsilon
 # 迭代语句
-iteration_statement -> while ( expression ) statement
-iteration_statement -> do statement while ( expression ) ;
-
+iteration_statement -> while M6 ( expression ) M6 statement
+iteration_statement -> do M6 statement while ( expression ) ;
 
 # 表达式
 expression_statement -> ;
@@ -154,54 +221,384 @@ assignment_operator -> *=
 assignment_operator -> /=
 # 条件表达式
 conditional_expression -> logical_or_expression
+{
+    no  action
+}
 logical_or_expression -> logical_and_expression
-logical_or_expression -> logical_or_expression || logical_and_expression
+{
+    no action
+}
+# 修改文法
+logical_or_expression -> logical_or_expression || M2 logical_and_expression
+{
+    top =
+}
+# 新增文法
+M2 -> epsilon
+{
+    push(nextinstr) # 下一条指令的标号
+}
 logical_and_expression -> equality_expression
-logical_and_expression -> logical_and_expression && equality_expression
+{
+    no action
+}
+# 修改文法
+logical_and_expression -> logical_and_expression_1 && M1 equality_expression
+{
+    condition:
+    //控制流
+    top=equality_expression.trueList;
+    top-1=equality_expression.FalseList;
+    top-2=M1.nextInstr
+    top-3=logical_and_expression_1.trueList;
+    top-4=logical_and_expression_1.falseList;
+    action:
+    backPatch(logical_and_expression.trueList,top-2);
+    logical_and_expression.trueList=top;
+    logical_and_expression.FalseList=merge(top-1,top-4);
+    pop() *5;
+    push(logical_and_expression.trueList);
+    push(logical_and_expression.falseList);
+}
+# 新增文法
+M1 -> epsilon
+{
+    push(nextinstr) # 下一条指令的标号
+}
 #
 equality_expression -> relational_expression
+{
+    no action
+}
+##############################################################################
 equality_expression -> equality_expression == relational_expression
+{
+    condition:
+    top=relational_expression.addr
+    top-1=equality_expression.addr
+    a=new Temp();
+    gen(if top-1==top goto next+3(a=1)
+    a=0
+    goto next+2
+    a=1)
+    pop();
+    pop();
+    push(a);
+}
 equality_expression -> equality_expression != relational_expression
+{
+    condition:
+    top=relational_expression.addr
+    top-1=equality_expression.addr
+    a=new Temp();
+    gen(if top-1!=top goto next+3(a=1)
+    a=0
+    goto next+2
+    a=1)
+    pop();
+    pop();
+    push(a);
+}
 #
 relational_expression -> additive_expression
+{
+    no action
+}
+###############################################################################
 relational_expression -> relational_expression > additive_expression
+{
+    condition:
+    top=additive_expression.addr
+    top-1=relational_expression.addr
+    a=new Temp();
+    relational_expression.trueList=makeList(nextInstr)
+    relational_expression.falseList=makeList(nextInstr+1)
+    gen(
+    if top-1 > top1 goto _ trueList
+    goto _ falseList
+    )
+    pop();
+    pop();
+    push(a);
+}
 relational_expression -> relational_expression < additive_expression
+{
+    condition:
+    top=additive_expression.addr
+    top-1=relational_expression.addr
+     a=new Temp();
+    gen(
+    if top-1 < top1 goto nextquad+3
+    a=0
+    goto nextquad+2
+    a=1)
+    pop();
+    pop();
+    push(a);
+}
 relational_expression -> relational_expression >= additive_expression
+{
+    condition:
+    top=additive_expression.addr
+    top-1=relational_expression.addr
+     a=new Temp();
+    gen(
+    if top-1 >= top1 goto nextquad+3
+    a=0
+    goto nextquad+2
+    a=1)
+    pop();
+    pop();
+    push(a);
+}
 relational_expression -> relational_expression <= additive_expression
+{
+    condition:
+    top=additive_expression.addr
+    top-1=relational_expression.addr
+     a=new Temp();
+    gen(
+    if top-1 <= top1 goto nextquad+3
+    a=0
+    goto nextquad+2
+    a=1)
+    pop();
+    pop();
+    push(a);
+}
 #
 additive_expression -> multiplicative_expression
+{
+    no action;
+}
 additive_expression -> additive_expression + multiplicative_expression
+{
+    condition:
+    top=multiplicative_expression.addr
+    top-1=additive_expression
+    action:
+    a =new Temp();
+    gen ('+',top-1,top,a);
+    pop();
+    pop();
+    push(a);
+}
 additive_expression -> additive_expression - multiplicative_expression
+{
+    condition:
+    top=multiplicative_expression.addr
+    top-1=additive_expression
+    action:
+    a =new Temp();
+    gen ('-',top-1,top,a);
+    pop();
+    pop();
+    push(a);
+}
 multiplicative_expression -> unary_expression
+{
+    no action
+}
 multiplicative_expression -> multiplicative_expression * unary_expression
+{
+    condition:
+    top=unary_expression
+    top-1=multiplicative_expression.addr
+    action:
+    a =new Temp();
+    gen ('*',top-1,top,a);
+    pop();
+    pop();
+    push(a);
+}
 multiplicative_expression -> multiplicative_expression / unary_expression
+{
+    condition:
+    top=unary_expression
+    top-1=multiplicative_expression.addr
+    action:
+    a =new Temp();
+    gen ('/',top-1,top,a);
+    pop();
+    pop();
+    push(a);
+}
 multiplicative_expression -> multiplicative_expression % unary_expression
+{
+    condition:
+    top=unary_expression
+    top-1=multiplicative_expression.addr
+    action:
+    a =new Temp();
+    gen ('%',top-1,top,a);
+    pop();
+    pop();
+    push(a);
+}
 # 一元表达式
 unary_expression -> postfix_expression
+{
+    no action
+}
 unary_expression -> ++ postfix_expression
+{
+    top=top.value+1;
+}
 unary_expression -> -- postfix_expression
+{
+    top=top.value-1;
+}
 unary_expression -> unary_operator unary_expression
+{
+    switch(top)
+    case "+":
+        pop()
+        break;
+    case "-":
+        a= new Temp()
+        gen ("minus",top,-,a)
+        pop();
+        push(a)
+        break;
+    case "!":
+        a =new Temp()
+        gen ("not",top,-,a)
+        pop();
+        push (a)
+        break;
+}
 unary_operator -> +
+{
+    push("+")
+}
 unary_operator -> -
+{
+    push("-")
+}
 unary_operator -> !
+{
+    push("!")
+}
 # 后缀
-postfix_expression -> primary_expression
+postfix_expression -> primary_expression {no action ,当前栈顶就是该内容}
+# 数组引用(需要使用base计算出引用的位置)base +i1*w1+i2*w2
+
+b[a]=10+20;
++ 10 20 t1
+[]= b a
+b[a]=10;
+[]= 10 _ b+a
+a=b[1];
+[]= b+1 _ a
 postfix_expression -> postfix_expression [ expression ]
-postfix_expression -> postfix_expression ( )
-postfix_expression -> postfix_expression ( argument_expression_list )
-# postfix_expression -> postfix_expression . id
-postfix_expression -> postfix_expression ++
-postfix_expression -> postfix_expression --
+{
+    condition:
+    top =expression.addr
+    top-1=offset
+    top-2=id
+    action:
+    top-1=top*(top-2).getWidth+top-1
+    top=top-1;
+
+    or
+    condition:
+    top =expression.addr
+    top-1=id
+    action:
+    push (top*(top-1).getWidth)
+}
+# 函数调用
+postfix_expression -> postfix_expression_1 ( )
+{
+    a =new Temp();
+    gen('call', top(内容是id),0 ,a)
+    push(a);
+}
+# 参数列表
 argument_expression_list -> assignment_expression
-argument_expression_list -> argument_expression_list , assignment_expression
+{
+    condition:
+    top = assignment_expression.addr
+    action:
+    gen ('param',top,-,-)
+    pop();
+    top=1; param_num
+}
+argument_expression_list -> argument_expression_list_1 , assignment_expression
+{
+    condition:
+    top=assignment_expression.addr
+    top-1=param_num
+    action:
+    gen('param',assigment_expression.addr)
+    top-1=(top-1).value+1
+    pop();
+}
+postfix_expression -> postfix_expression_1 ( argument_expression_list )
+{
+    condition:
+    top =param_num;
+    top-1=postfix_expression_1.addr
+    action:
+    a= new Temp()
+    gen('call', top-1,top,a)
+    pop();
+    pop();
+    push(a)
+}
+# 结构体调用
+# postfix_expression -> postfix_expression_1 . id
+{postfix_expression.addr =new Temp(), gen(postfix_expression.addr,)} #########################################
+postfix_expression -> postfix_expression_1 ++
+{
+    top=top.value+1;
+}
+postfix_expression -> postfix_expression_1 --
+{
+   top=top.value-1
+}
+
 # 基本
 primary_expression -> id
+{
+    push(id.lexeme(对应符号表条目中的id))
+}  # 指向符号表中的一条内容
 primary_expression -> real
+{
+    push(real.value)
+} # 常量
 primary_expression -> integer
+{
+    push(integer.value)
+} # 常量
 primary_expression -> character
+{
+    push(character.value)
+} # 常量
 primary_expression -> true
+{
+   primary_expression.trueList=makeList(nextInstr);
+   primary_expression.falseList=makeList();
+   gen (goto ,-,-,_)
+   push (falseList);
+   push(trueList);
+} # 常量
 primary_expression -> false
+{
+    primary_expression.falseList=makeList(nextInstr);
+    primary_expression.trueList=makeList();
+      gen (goto ,-,-,_)
+      push (falseList);
+      push(trueList);
+} # 常量
 # primary_expression -> string
+{
+    new Temp();
+    primary_expression.addr = string.value
+}
 primary_expression -> ( expression )
+{
+    no action
+}
 *startSym
 program

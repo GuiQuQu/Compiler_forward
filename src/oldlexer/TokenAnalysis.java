@@ -609,7 +609,7 @@ public class TokenAnalysis {
     }
 
     private boolean isNumEnd(char i) {
-        return isBlank(i) || isOperator(i) || isDivide(i) || i == ')' || i == ']';
+        return isBlank(i) || isOperator(i) || isDivide(i) || i == ')' || i == ']' || i=='}';
     }
 
     private boolean isWordEnd(char i) {

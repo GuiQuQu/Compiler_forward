@@ -27,6 +27,7 @@ public class TokenTable {
     final public int FALSE = 15;
     final public int STRUCT = 16; //结构体
     final public int BREAK = 60;
+    final public int VOID =61;
     //标识符
     final public int ID = 17;
     //运算符
@@ -122,6 +123,8 @@ public class TokenTable {
                 return "struct";
             case BREAK:
                 return "break";
+            case VOID:
+                return "void";
             case ID:
                 return "id";
             case PLUS:
@@ -381,6 +384,8 @@ public class TokenTable {
                 return RETURN;
             case "break":
                 return BREAK;
+            case "void":
+                return VOID;
             default:
                 return ID;
         }

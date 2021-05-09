@@ -2,9 +2,13 @@ package parser;
 
 import oldlexer.Token;
 import oldlexer.TokenTable;
+import parser.semantic.SemanticAction;
 
+import javax.swing.plaf.nimbus.State;
 import java.io.*;
 import java.lang.invoke.VarHandle;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.util.*;
 import java.util.logging.ConsoleHandler;
 import java.util.logging.Level;
@@ -23,8 +27,16 @@ import java.util.logging.Logger;
  * 1.生成语法分析树 √
  * 2.按照要求输出结果 √
  * 3.输出语法分析表
- * 4.构造合适的文法
+ * 4.构造合适的文法 √
  * 5.错误处理 √
+ * <p>
+ *     语义分析
+ *     1. 构造翻译方案SDT
+ *     2. 用代码实现翻译方案
+ *     3. 可以根据名字调用指定的翻译动作
+ *     4. 确定在LR(1)中何时执行相应的动作
+ *     5. 建立符号表,以及与符号表相应的操作
+ *     <p/>
  */
 public class Parser {
     //语法分析器的文法
@@ -179,7 +191,7 @@ public class Parser {
     }
 
     /**
-     * 将语法分析器的token表现形式转换为词法分析的
+     * 将语法分析器的token表现形式转换为词法分析的保存形式
      */
     public List<RightNode> transFromOldLexer(List<Token> old_list) {
         TokenTable tt = new TokenTable();
@@ -265,6 +277,7 @@ public class Parser {
         tokens.add(RightNode.end);
         Stack<Integer> stateStack = new Stack<>(); //状态栈
         Stack<RightNode> symStack = new Stack<>(); //符号栈
+        SemanticAction sA =new SemanticAction();
         stateStack.push(0); //状态从0开始
         int i = 0;
         while (i < tokens.size()) { //输入流,只有输入流具有行号信息
@@ -285,6 +298,17 @@ public class Parser {
                 int linNum = rights.get(0).getLineNum();
                 LeftNode treePro = new LeftNode(new RightNode(production.getValue().getValue(), "", false, linNum));
                 treePro.setRight(rights);
+                // 添加语义动作
+                treePro.setSemanticAction(production.getSemanticAction());
+                //执行语义动作
+                try {
+                    if (production.getSemanticAction().length()>0){
+                        Method m =sA.getClass().getDeclaredMethod(production.getSemanticAction(),LeftNode.class);
+                        m.invoke(sA,treePro);
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
                 symStack.push(treePro.getValue()); //压入新的非终结符
                 LR1TableValue gotv = SGoto.get(new LR1TableKey(stateStack.peek(), production.getValue()));
                 stateStack.push(gotv.getUse()); //转移到新的状态
@@ -300,11 +324,13 @@ public class Parser {
                 int line = tokens.get(i).getLineNum();
                 sb.append(tokens.get(i).getTokenDescription());
                 System.out.println(errorHandle(line, sb.toString()));
+
                 break;
             }
         }
         return actionList;
     }
+
 
     /**
      * 计算LR1语法分析表
@@ -313,10 +339,10 @@ public class Parser {
         getLR1Items();
 //        PrintLR1List();
         System.out.println("正在计算语法分析表...");
+        List<RightNode> allTerminator = new ArrayList<>(grammar.getTerminator());
+        allTerminator.add(RightNode.end);  //为终结符集合中添加结束符号
         for (int i = 0; i < lr1list.size(); i++) {
             Set<LR1item> state_i = lr1list.get(i); // 对应表的行，一行表示一个状态
-            List<RightNode> allTerminator = new ArrayList<>(grammar.getTerminator());
-            allTerminator.add(RightNode.end);  //为终结符集合中添加结束符号
             //action表
             for (RightNode rightNode : allTerminator) {  // rightNode 对应action表头
                 boolean isWrite = false;

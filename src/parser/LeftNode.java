@@ -9,12 +9,18 @@ import java.util.List;
  * 文法左部的非终结符,用来表示一条文法
  */
 public class LeftNode {
-    private RightNode value;
-    //    private List<List<RightNode>> rights = new ArrayList<>();
-    private List<RightNode> right = new ArrayList<>();
 
+    private RightNode value;
+    private List<RightNode> right = new ArrayList<>();
+    private String semanticAction="";
     public LeftNode(RightNode value) {
         this.value = value;
+    }
+
+    public LeftNode(RightNode value, List<RightNode> right, String semanticAction) {
+        this.value = value;
+        this.right = right;
+        this.semanticAction = semanticAction;
     }
 
     public RightNode getValue() {
@@ -31,6 +37,14 @@ public class LeftNode {
 
     public void setRight(List<RightNode> right) {
         this.right = right;
+    }
+
+    public String getSemanticAction() {
+        return semanticAction;
+    }
+
+    public void setSemanticAction(String semanticAction) {
+        this.semanticAction = semanticAction;
     }
 
     @Override
