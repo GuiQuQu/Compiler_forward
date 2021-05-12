@@ -24,6 +24,7 @@ public class SymbolTableEntry {
 
     private String id;
     private Type type;
+    private int offset;
 
     public SymbolTableEntry() {
     }
@@ -31,6 +32,20 @@ public class SymbolTableEntry {
     public SymbolTableEntry(String id, Type type) {
         this.id = id;
         this.type = type;
+    }
+
+    public SymbolTableEntry(String id, Type type, int offset) {
+        this.id = id;
+        this.type = type;
+        this.offset = offset;
+    }
+
+    public int getOffset() {
+        return offset;
+    }
+
+    public void setOffset(int offset) {
+        this.offset = offset;
     }
 
     public String getId() {

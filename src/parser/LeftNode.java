@@ -11,6 +11,7 @@ import java.util.List;
 public class LeftNode {
 
     private RightNode value;
+    //当该产生式right是空串时,right.size=0
     private List<RightNode> right = new ArrayList<>();
     private String semanticAction="";
     public LeftNode(RightNode value) {

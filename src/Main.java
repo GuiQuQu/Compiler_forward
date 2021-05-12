@@ -20,12 +20,20 @@ public class Main {
         TokenAnalysis ta = new TokenAnalysis(FilePath);
         ta.tokenAnalysis();
         ta.PrintResult(ta.getResult());
-        Parser parser =new Parser("src/parser/grammar/grammar5.txt");
-//        Parser parser = new Parser("src/parser/grammar/grammar5.txt","analysisTable.txt");
+        boolean a = true;
+        Parser parser;
+        if (a) {
+            parser = new Parser("src/parser/grammar/grammar6.txt");
+        } else {
+            parser = new Parser(
+                    "src/parser/grammar/grammar6.txt",
+                    "analysisTable.txt",
+                    false);
+        }
         if (ta.getError().size() > 0) {
             throw new Exception("请先处理词法错误!");
         } else {
-          List<RightNode> lexerResult= parser.transFromOldLexer(ta.getResult());
+            List<RightNode> lexerResult = parser.transFromOldLexer(ta.getResult());
             List<LeftNode> nodes = parser.grammarAnalysis(lexerResult);
             if (!parser.isError()) {
                 Node root = parser.getAnalTree(nodes);

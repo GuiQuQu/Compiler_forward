@@ -43,7 +43,8 @@ public class Type {
             Int = new Type("int", 4),
             Float = new Type("float", 8),
             Char = new Type("char", 1),
-            Boolean = new Type("boolean", 1);
+            Boolean = new Type("boolean", 1),
+            Void =new Type("void",0);
 
     @Override
     public String toString() {

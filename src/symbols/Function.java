@@ -1,5 +1,8 @@
 package symbols;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * @Author: Wang keLong
  * @DateTime: 16:00 2021/5/8
@@ -8,7 +11,7 @@ public class Function extends Type {
     //content 函数名
     private Type returnType; // 返回值类型
     private SymbolTable funcBody = new SymbolTable();// 函数体
-
+    private List<SymbolTableEntry> args =new ArrayList<>(); //函数的参数
     public Function(Type returnType) {
         super("function", 0);
         this.returnType = returnType;
