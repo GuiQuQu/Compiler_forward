@@ -169,33 +169,6 @@ public class Grammar {
         augmentedStart = lf.getValue();
     }
 
-    public void calFIRST2() {
-        System.out.println("FIRST...");
-        //init
-        createValueForFirst();
-        //终结符的FIRST集
-        for (RightNode rightNode : terminator) {
-            addItemToFirst(rightNode, rightNode);
-        }
-        int no_te_i = 0;
-        while (true) {
-            //当前非终结终结符是no_te_i
-            //寻找no_te_i的所有产生式
-            for (LeftNode production : productions) {
-                //空串产生式X-> epsilon
-                if (production.getRight().size() == 1 && production.getRight().get(0).equals(RightNode.epsilon)) {
-                    continue;
-                }
-                int i = 0;
-                while (i < production.getRight().size()) {
-                    i++;
-                    return;
-
-                }
-            }
-        }
-    }
-
     public void calFIRST() {
         System.out.println("FIRST....");
         //init,建立所有终结符和非终结符的FIRST集合
@@ -233,6 +206,33 @@ public class Grammar {
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+
+    public void calFIRST2() {
+        System.out.println("FIRST...");
+        //init
+        createValueForFirst();
+        //终结符的FIRST集
+        for (RightNode rightNode : terminator) {
+            addItemToFirst(rightNode, rightNode);
+        }
+        int no_te_i = 0;
+        while (true) {
+            //当前非终结终结符是no_te_i
+            //寻找no_te_i的所有产生式
+            for (LeftNode production : productions) {
+                //空串产生式X-> epsilon
+                if (production.getRight().size() == 1 && production.getRight().get(0).equals(RightNode.epsilon)) {
+                    continue;
+                }
+                int i = 0;
+                while (i < production.getRight().size()) {
+                    i++;
+                    return;
+
                 }
             }
         }
@@ -305,57 +305,6 @@ public class Grammar {
         return sb.toString();
     }
 
-    public void calFIRST1() {
-        System.out.println("正在计算语法的First集...");
-        //计算终结符的first集
-        createValueForFirst(); //init
-        for (RightNode rightNode : terminator) {
-            addItemToFirst(rightNode, rightNode);
-        }
-        boolean isOK = false;
-        int old_size;
-        int new_size;
-        int num = 0;
-        while (!isOK) {
-            isOK = true;
-            if (num % 100000 == 0) {
-                System.out.println("num=" + num);
-            }
-            for (LeftNode production : productions) {
-                //空串
-                if (production.getRight().get(0).equals(RightNode.epsilon)) {
-                    if (!addItemToFirst(production.getValue(), RightNode.epsilon)) {
-                        isOK = false;
-                    }
-                } else {
-                    // X-> Y1Y2Y3....
-                    int i = 0;
-                    while (true) {
-                        if (firsts.get(production.getRight().get(i)).contains(RightNode.epsilon)) {
-                            i++;
-                        } else {
-                            Set<RightNode> Xset = firsts.get(production.getValue());
-                            Set<RightNode> Yiset = firsts.get(production.getRight().get(i));
-                            old_size = Xset.size();
-                            Xset.addAll(Yiset);
-                            new_size = Xset.size();
-                            if (new_size > old_size) {
-                                isOK = false;
-                            }
-                            break;
-                        }
-                        if (i == production.getRight().size()) {
-                            addItemToFirst(production.getValue(), RightNode.epsilon);
-                            isOK = false;
-                            break;
-                        }
-                    }
-                }
-            }
-            num++;
-        }
-    }
-
     private void createValueForFirst() {
         for (RightNode rightNode : terminator) {
             Set<RightNode> set = new HashSet<>();
@@ -370,7 +319,7 @@ public class Grammar {
     private boolean addItemToFirstWithoutEpsilon(RightNode rn, Set<RightNode> Yiset) {
         Set<RightNode> Xset = firsts.get(rn);
         int old_size = Xset.size();
-        Set<RightNode> temp =new HashSet<>(Yiset);
+        Set<RightNode> temp = new HashSet<>(Yiset);
         temp.remove(RightNode.epsilon);
         Xset.addAll(temp);
         return Xset.size() > old_size; // true 发生改变

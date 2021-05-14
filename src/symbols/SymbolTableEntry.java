@@ -24,7 +24,7 @@ public class SymbolTableEntry {
 
     private String id;
     private Type type;
-    private int offset;
+//    private int offset;
 
     public SymbolTableEntry() {
     }
@@ -32,20 +32,6 @@ public class SymbolTableEntry {
     public SymbolTableEntry(String id, Type type) {
         this.id = id;
         this.type = type;
-    }
-
-    public SymbolTableEntry(String id, Type type, int offset) {
-        this.id = id;
-        this.type = type;
-        this.offset = offset;
-    }
-
-    public int getOffset() {
-        return offset;
-    }
-
-    public void setOffset(int offset) {
-        this.offset = offset;
     }
 
     public String getId() {
@@ -74,11 +60,12 @@ public class SymbolTableEntry {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         SymbolTableEntry that = (SymbolTableEntry) o;
-        return id.equals(that.id);
+        return id.equals(that.id) &&
+                type.equals(that.type);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(id);
+        return Objects.hash(id, type);
     }
 }

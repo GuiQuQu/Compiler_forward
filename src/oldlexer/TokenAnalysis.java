@@ -427,6 +427,11 @@ public class TokenAnalysis {
                                 token = new Token(tokenTable.RIGHTL, tokens,cur_line);
                                 result.add(token);
                                 break;
+                            case '.':
+                                tokens = getSubString(buffer1, buffer2, begin, forward);
+                                token = new Token(tokenTable.POINT, tokens,cur_line);
+                                result.add(token);
+                                break;
                             case '\'':
                                 forward = PointerPlus(forward, buffer_size);
                                 cur = getChar(buffer1, buffer2, real_size, forward, input);
@@ -613,7 +618,7 @@ public class TokenAnalysis {
     }
 
     private boolean isWordEnd(char i) {
-        return isNumEnd(i) || i == '[' || i == '{' || i == '(';
+        return isNumEnd(i) || i == '[' || i == '{' || i == '(' || i=='.';
     }
 
     private boolean isOperator(char i) {

@@ -2,6 +2,7 @@ package symbols;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * @Author: Wang keLong
@@ -19,12 +20,20 @@ public class SymbolTable {
         previous = null;
     }
 
+    public int size() {
+        return list.size();
+    }
+
     public SymbolTable getPrevious() {
         return previous;
     }
 
     public void setPrevious(SymbolTable previous) {
         this.previous = previous;
+    }
+
+    public SymbolTableEntry get(int index) {
+        return list.get(index);
     }
 
     /**
@@ -46,12 +55,22 @@ public class SymbolTable {
     /**
      * 通过id寻找对应的符号表内容
      */
-    public SymbolTableEntry getById(String id) {
-        SymbolTableEntry ste = new SymbolTableEntry();
-        ste.setId(id);
-        return list.get(list.indexOf(ste));
+    public SymbolTableEntry getById(String id,SymbolTable st) {
+        for (SymbolTableEntry entry : st.getList()) {
+            if (entry.getId().equals(id)){
+                return entry;
+            }
+        }
+        return null;
     }
-
+    public SymbolTableEntry getById(String id) {
+        for (SymbolTableEntry entry : list) {
+            if (entry.getId().equals(id)){
+                return entry;
+            }
+        }
+        return null;
+    }
     public boolean contains(SymbolTableEntry ste) {
         return list.contains(ste);
     }
@@ -59,14 +78,19 @@ public class SymbolTable {
     public boolean contains(String s) {
         SymbolTableEntry ste = new SymbolTableEntry();
         ste.setId(s);
-        return list.contains(s);
+        for (SymbolTableEntry entry : list) {
+            if (entry.getId().equals(s)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public SymbolTableEntry getUsedEntry(String id) {
         SymbolTable symbolTable = this;
         while (symbolTable != null) {
             if (symbolTable.contains(id)) {
-                return getById(id);
+                return getById(id,symbolTable);
             } else {
                 symbolTable = symbolTable.getPrevious();
             }
@@ -90,8 +114,22 @@ public class SymbolTable {
     public String toString() {
         StringBuilder sb = new StringBuilder();
         for (SymbolTableEntry entry : list) {
-            sb.append(sb).append("\n");
+            sb.append(entry).append("\n");
         }
         return sb.toString();
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        SymbolTable that = (SymbolTable) o;
+        return list.equals(that.list) &&
+                previous.equals(that.previous);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(list, previous);
     }
 }

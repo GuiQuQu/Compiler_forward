@@ -5,6 +5,8 @@ import lexer.tokenUnit.Tag;
 import lexer.tokenUnit.Token;
 import lexer.tokenUnit.Word;
 
+import java.util.Objects;
+
 /**
  * @Author: Wang keLong
  * @DateTime: 15:43 2021/4/22
@@ -49,5 +51,18 @@ public class Type {
     @Override
     public String toString() {
         return content;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        Type type = (Type) o;
+        return content.equals(type.content);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(content);
     }
 }

@@ -13,13 +13,14 @@ import java.util.*;
  */
 public class SemanticAction {
     //语义栈
-    private Deque<Attribute> stack = new LinkedList<>();
+    private Stack<Attribute> stack = new Stack<>();
     private int tempNum = 0;
     private Stack<SymbolTable> symTabStack = new Stack<>();
     private List<Quadruple> threeAddressCode = new ArrayList<>();
+    private List<Struct> structs = new ArrayList<>();
 
     public SemanticAction() {
-        stack = new LinkedList<>();
+        stack = new Stack<>();
         tempNum = 0;
         symTabStack = new Stack<>();
         threeAddressCode = new ArrayList<>();
@@ -27,6 +28,14 @@ public class SemanticAction {
         SymbolTable st = new SymbolTable();
         st.setPrevious(null);
         symTabStack.push(st);
+    }
+
+    public String printThreeAddressCode() {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < threeAddressCode.size(); i++) {
+            sb.append(i).append(":").append(threeAddressCode.get(i).transToThreeAddressCode()).append("\n");
+        }
+        return sb.toString();
     }
 
     /**
@@ -72,10 +81,20 @@ public class SemanticAction {
     private void backPatch(List<Integer> list, int instr) {
         for (Integer i : list) {
             Quadruple q = threeAddressCode.get(i);
-            if (q.getOp().equals("goto") && q.getResult().equals("_")) {
+            if (q.getResult().equals("_")) {
                 q.setResult(Integer.toString(instr));
             }
         }
+    }
+
+    public String errorHandle(String info, int line) {
+        String sb = "Semantic error at Line[" +
+                line +
+                "]:[" +
+                info +
+                "]";
+        return sb;
+
     }
 
     /**
@@ -89,15 +108,16 @@ public class SemanticAction {
 
     /**
      * primary_expression -> id
+     * primary_expression.addr类
      */
     public void primaryId(LeftNode production) throws Exception {
         SymbolTable st = symTabStack.peek();
         String lexeme = production.getRight().get(0).getTokenDescription();
-        if (st.contains(lexeme)) {
-            stack.push(new Attribute("type", st.getById(lexeme).getType()));
-            stack.add(new Attribute("id", lexeme));
+        if (st.isUseEntry(lexeme)) {
+            Expr addr = new Expr(Expr.Variable, lexeme, st.getUsedEntry(lexeme).getType());
+            stack.add(new Attribute("id", addr));
         } else {
-            throw new Exception("变量" + lexeme + "未声明");
+            throw new Exception(errorHandle("未知变量名:" + lexeme, production.getValue().getLineNum()));
         }
     }
 
@@ -105,40 +125,36 @@ public class SemanticAction {
      * primary_expression -> real
      */
     public void primaryReal(LeftNode production) {
-        Float value = Float.parseFloat(production.getRight().get(0).getTokenDescription());
-        stack.push(new Attribute("type", Type.Float));
-        stack.offer(new Attribute("real.value", value));
+        Expr addr = new Expr(Expr.Constant, production.getRight().get(0).getTokenDescription(), Type.Float);
+        stack.push(new Attribute("real", addr));
     }
 
     /**
      * primary_expression -> integer
      */
     public void primaryInteger(LeftNode production) {
-        Integer value = Integer.parseInt(production.getRight().get(0).getTokenDescription());
-        stack.push(new Attribute("type", Type.Int));
-        stack.offer(new Attribute("integer.value", value));
+        Expr addr = new Expr(Expr.Constant, production.getRight().get(0).getTokenDescription(), Type.Int);
+        stack.push(new Attribute("integer", addr));
     }
 
     /**
      * primary_expression -> character
      */
     public void primaryCharacter(LeftNode production) {
-        stack.push(new Attribute("type", Type.Char));
-        String value = production.getRight().get(0).getTokenDescription();
-        stack.push(new Attribute("char.value", value));
+        Expr addr = new Expr(Expr.Constant, production.getRight().get(0).getTokenDescription(), Type.Char);
+        stack.push(new Attribute("char", addr));
     }
 
     /**
      * 当计算布尔值时,通过'control'指明是值还是控制流
      * primary_expression -> true
-     * primary_expression.value
-     * primary_expression.type
+     * primary_expression.addr
      */
     public void primaryTrue(LeftNode production) {
         Attribute a;
         if (!stack.isEmpty()) {
             a = stack.peek();
-            if (a.getValue().toString().equals("control")) {
+            if (a.getName().equals("control")) {
                 stack.pop();
                 List<Integer> trueList = makeList(getNextInstr());
                 List<Integer> falseList = new ArrayList<>();
@@ -148,8 +164,8 @@ public class SemanticAction {
                 return;
             }
         }
-        stack.push(new Attribute("type", Type.Boolean));
-        stack.push(new Attribute("boolean.true", "true"));
+        Expr addr = new Expr(Expr.Constant, "1", Type.Boolean);
+        stack.push(new Attribute("true", addr));
     }
 
     /**
@@ -161,7 +177,7 @@ public class SemanticAction {
         Attribute a;
         if (!stack.isEmpty()) {
             a = stack.peek();
-            if (a.getValue().toString().equals("control")) {
+            if (a.getName().equals("control")) {
                 stack.pop();
                 List<Integer> falseList = makeList(getNextInstr());
                 List<Integer> trueList = new ArrayList<>();
@@ -171,29 +187,49 @@ public class SemanticAction {
                 return;
             }
         }
-        stack.push(new Attribute("type", Type.Boolean));
-        stack.push(new Attribute("boolean.false", "false"));
+        Expr addr = new Expr(Expr.Constant, "0", Type.Boolean);
+        stack.push(new Attribute("false", addr));
     }
 
     /**
      * postfix_expression -> postfix_expression [ expression ] 综合属性往上算
      * condition：
-     * expression.addr
-     * expression.type
-     * postfix_expression.addr
-     * postfix_expression.type
-     * result:
-     * postfix_expression.addr
-     * postfix_expression.type
-     * <p>
-     * a[1]=10
-     * t1 =C(a)
-     * t2 = 1 * 4
-     * t1[t2]=10
-     * y=a[2]
-     * #################################################################
+     * expression.addr (表达式数值,INT)
+     * postfix_expression.addr (offset Variable Array)  postfix_expression.addr (id Variable Array base)
+     * -> (offset Variable Array,base)
      */
-    public void postfix2(LeftNode production) throws Exception {
+    public void postfix2(LeftNode p) throws Exception {
+        Expr expr = (Expr) stack.pop().getValue();
+        Type typeE = expr.getType();
+        Expr post = (Expr) stack.pop().getValue();
+        if (!(post.getType() instanceof Array)) {
+            throw new Exception(errorHandle(post.getValue() + "非数组变量", p.getValue().getLineNum()));
+        }
+        if (!typeE.equals(Type.Int)) {
+            throw new Exception(errorHandle("请使用整数表示数组下标", p.getValue().getLineNum()));
+        }
+        Array typeP = (Array) post.getType();
+        SymbolTable st = symTabStack.peek();
+        String t2 = getNewTemp(); //保存偏移值
+        Expr addr = new Expr();
+        if (st.isUseEntry(post.getValue())) { // 是声明的id
+            String t1 = getNewTemp();
+            addr.setBase(t1);
+            gen(new Quadruple("=", "base(" + post.getValue() + ")", "", t1));
+            gen(new Quadruple("*", expr.getValue(), restoreType(typeP).getWidth() + "", t2));
+        } else { //是偏移值
+            String t3 = getNewTemp();
+            addr.setBase(post.getBase());
+            gen(new Quadruple("*", expr.getValue(), restoreType(typeP).getWidth() + "", t3));
+            gen(new Quadruple("+", post.getValue(), t3, t2));
+        }
+        addr.setDescription(Expr.Variable);
+        addr.setValue(t2);
+        addr.setType(typeP);
+        stack.push(new Attribute("addr", addr));
+    }
+
+    public void postfix(LeftNode production) throws Exception {
         Attribute addr = stack.pop(); //值或者id
         Type type = (Type) stack.pop().getValue();
         Attribute posAddr = stack.pop(); // id 或者是已经计算的数组值
@@ -238,128 +274,163 @@ public class SemanticAction {
     }
 
     /**
-     * postfix_expression -> postfix_expression_1 ( )
-     * postfix_expression_1.addr(id)
+     * postfix_expression -> id ( )
+     * <p>
      * postfix_expression_1.type(Function)
      */
     public void postfix3(LeftNode production) throws Exception {
-        String funcName = stack.pop().getValue().toString();
-        Function func = (Function) stack.pop().getValue();
-        if (func.getReturnType().equals(Type.Void)) {
+        String funcName = production.getRight().get(0).getTokenDescription();
+        SymbolTable st = symTabStack.peek();
+        if (!st.isUseEntry(funcName) || !(st.getUsedEntry(funcName).getType() instanceof Function)) {
+            throw new Exception(errorHandle("未知函数名" + funcName, production.getValue().getLineNum()));
+        }
+        Function function = (Function) st.getUsedEntry(funcName).getType();
+        if (function.getArgs().size() > 0) {
+            throw new Exception(errorHandle(funcName + "函数参数数量不正确", production.getValue().getLineNum()));
+        }
+        if (function.getReturnType().equals(Type.Void)) {
             gen(new Quadruple("call", funcName, "", ""));
         } else {
-            String a = getNewTemp();
-            gen(new Quadruple("call", funcName, "", a));
-            stack.push(new Attribute("addr", a));
+            String t1 = getNewTemp();
+            gen(new Quadruple("call", funcName, "", t1));
+            Expr addr = new Expr(Expr.Constant, t1, function.getReturnType()); //函数调用只能成为右值
+            stack.push(new Attribute("addr", addr));
         }
     }
 
     /**
      * argument_expression_list -> assignment_expression
-     * assignment_expression.addr
-     * assignment_expression.type
+     * assignment_expression.addr (Addr)
+     * func(1,2)
      */
     public void argument_expression1(LeftNode production) {
-        Attribute addr = stack.pop();
-        Attribute type = stack.pop();
-        //type可以检查 参数类型是否匹配
-        gen(new Quadruple("param", addr.toString(), "", ""));
-        stack.pop();
-        stack.push(new Attribute("param_num", 1));
+        Expr addr = (Expr) stack.pop().getValue();
+//        Type type = (Type) stack.pop().getValue();
+        Type type = addr.getType();
+        List<Type> param_list = new ArrayList<>();
+        param_list.add(type);
+        gen(new Quadruple("param", addr.getValue(), "", ""));
+        stack.push(new Attribute("param_list", param_list));
     }
 
     /**
-     * argument_expression_list -> argument_expression_list_1 , assignment_expression
+     * argument_expression_list -> argument_expression_list , assignment_expression
      * assignment_expression.addr
-     * assignment_expression.type
-     * argument_expression_list_1.param_num
+     * argument_expression_list_1.param_list
      */
     public void argument_expression2(LeftNode production) {
-        Attribute addr = stack.pop();
-        Attribute type = stack.pop();
-        //type可以检查 参数类型是否匹配
-        Integer param_num = (Integer) stack.pop().getValue();
-        gen(new Quadruple("param", (String) addr.getValue(), "", ""));
-        stack.push(new Attribute("param_num", param_num + 1));
+        Expr addr = (Expr) stack.pop().getValue();
+//        Type type = (Type) stack.pop().getValue();
+        Type type = addr.getType();
+        List<Type> param_list = (List<Type>) stack.pop().getValue();
+        param_list.add(type);
+        gen(new Quadruple("param", addr.getValue(), "", ""));
+        stack.push(new Attribute("param_list", param_list));
     }
 
     /**
-     * postfix_expression -> postfix_expression_1 ( argument_expression_list )
-     * argument_expression_list.param_num
-     * postfix_expression_1.addr(id)
-     * postfix_expression_1.type(Function)
+     * postfix_expression -> id ( argument_expression_list )
+     * argument_expression_list.param_list
      */
-    public void postfix4(LeftNode production) {
-        Integer param_num = (Integer) stack.pop().getValue();
-        String funcName = stack.pop().getValue().toString();
-        Function func = (Function) stack.pop().getValue();
-        if (func.getReturnType().equals(Type.Void)) {
-            gen(new Quadruple("call", funcName, param_num.toString(), ""));
-        } else {
-            String a = getNewTemp();
-            gen(new Quadruple("call", funcName, param_num.toString(), a));
-            stack.push(new Attribute("addr", a));
+    public void postfix4(LeftNode production) throws Exception {
+        String funcName = production.getRight().get(0).getTokenDescription();
+        SymbolTable st = symTabStack.peek();
+        List<Type> param_list = (List<Type>) stack.pop().getValue();
+        if (!st.isUseEntry(funcName) || !(st.getUsedEntry(funcName).getType() instanceof Function)) {
+            throw new Exception(errorHandle("未知函数名" + funcName, production.getValue().getLineNum()));
         }
-
+        Function function = (Function) st.getUsedEntry(funcName).getType();
+        if (!function.paramCompare(param_list)) {
+            throw new Exception(errorHandle(funcName + "函数参数不正确", production.getValue().getLineNum()));
+        }
+        if (function.getReturnType().equals(Type.Void)) {
+            gen(new Quadruple("call", funcName, param_list.size() + "", ""));
+        } else {
+            String t1 = getNewTemp();
+            gen(new Quadruple("call", funcName, param_list.size() + "", t1));
+            Expr addr = new Expr(Expr.Constant, t1, function.getReturnType()); //函数调用只能成为右值
+            stack.push(new Attribute("addr", addr));
+        }
     }
 
     /**
      * postfix_expression -> postfix_expression_1 ++
-     * postfix_expression_1.addr
-     * postfix_expression_1.type
      */
     public void postfix5(LeftNode production) throws Exception {
-        Attribute addr = stack.pop();
-        Attribute typeA = stack.pop();
-        Type type = (Type) typeA.getValue();
-        if (type.equals(Type.Int) || type.equals(Type.Float)) {
-            stack.push(typeA);
-            stack.push(new Attribute("addr", (Integer) addr.getValue() + 1));
-        } else {
-            throw new Exception("类型不匹配,无法应用++");
-        }
     }
 
     /**
      * postfix_expression -> postfix_expression_1 --
-     * postfix_expression_1.addr
-     * postfix_expression_1.type
      */
     public void postfix6(LeftNode production) throws Exception {
-        Attribute addr = stack.pop();
-        Attribute typeA = stack.pop();
-        Type type = (Type) typeA.getValue();
-        if (type.equals(Type.Int) || type.equals(Type.Float)) {
-            stack.push(typeA);
-            stack.push(new Attribute("addr", (Integer) addr.getValue() - 1));
+    }
+
+    /**
+     * 通过expr取出对应结构体/数组/普通变量中的值
+     */
+    public Expr getRightAddrValueOne(Expr expr) {
+        Expr addr = expr;
+        Type type = addr.getType();
+        if (type instanceof Array && addr.getBase() != null) {
+            Array array = (Array) type;
+            String offset = addr.getValue();
+            String base = addr.getBase();
+            String t1 = getNewTemp();
+            gen(new Quadruple("=[]", base + "[" + offset + "]", "", t1));
+            Type addrType = array.getType();
+            while (addrType instanceof Array) {
+                addrType = ((Array) addrType).getType();
+            }
+            addr = new Expr(addr.getDescription(), t1, addrType);
+        } else if (type instanceof Struct && addr.getBase() != null) {
+            Struct struct = (Struct) type;
+            String t1 = getNewTemp();
+            gen(new Quadruple("=.", addr.getBase() + "." + addr.getValue(), "", t1));
+            addr = new Expr(addr.getDescription(), t1, struct.getContentById(addr.getValue()).getType());
+        }
+        return addr;
+    }
+
+    /**
+     * postfix_expression -> postfix_expression . id
+     * condition:
+     * postfix_expression.addr (结构体标识符,Variable,STRUCT)
+     * result:
+     * postfix_expression.addr (对应id内容,Variable,STRUCT,base)
+     */
+    public void postfix7(LeftNode production) throws Exception {
+        Expr addrs = (Expr) stack.pop().getValue();
+        Expr addr = getRightAddrValueOne(addrs);
+        if (addr.getType() instanceof Struct && addr.getBase() == null) {
+            Struct struct = (Struct) addr.getType();
+            String id = production.getRight().get(2).getTokenDescription();
+            if (struct.getContentById(id) == null) {
+                throw new Exception(errorHandle(addr.getValue() + "不存在" + id + "这个属性", production.getValue().getLineNum()));
+            }
+            Expr expr = new Expr(Expr.Variable, id, addr.getType(), addr.getValue());
+            stack.push(new Attribute("addr", expr));
         } else {
-            throw new Exception("类型不匹配,无法应用--");
+            throw new Exception(errorHandle(addr.getValue() + "非结构体变量", production.getValue().getLineNum()));
         }
     }
 
     /**
      * unary_expression -> ++ postfix_expression
-     * postfix_expression_1.addr
-     * postfix_expression_1.type
      */
     public void unary2(LeftNode production) throws Exception {
-        postfix5(production);
+
     }
 
     /**
      * unary_expression -> -- postfix_expression
-     * postfix_expression_1.addr
-     * postfix_expression_1.type
      */
     public void unary3(LeftNode production) throws Exception {
-        postfix6(production);
     }
 
     /**
      * unary_expression -> unary_operator unary_expression
      * (普通表达式)
      * unary_expression.addr
-     * unary_expression.type
      * unary_operator.op
      * 控制流语句
      * unary_expression.trueList
@@ -367,26 +438,33 @@ public class SemanticAction {
      * unary_operator.op=!
      */
     public void unary4(LeftNode production) {
-        Attribute addr = stack.pop(); // 数字 或者是 id
-        Attribute typeA = stack.pop();
-        Attribute op = stack.pop();
-        String opS = (String) op.getValue();
-        String a = getNewTemp();
-        switch (opS) {
-            case "+":
-                break;
-            case "-":
-                gen(new Quadruple("minus", addr.getValue().toString(), "", a));
-                break;
-            case "!":
-                if (Type.Boolean.equals(typeA.getValue())) { //数值运算
-                    gen(new Quadruple("not", addr.getValue().toString(), "", a));
-                } else {
-                    //交换trueList和falseList
-                    stack.push(addr);
-                    stack.push(typeA);
-                }
-                break;
+        Attribute expr = stack.pop(); //true
+        Attribute op = stack.pop(); //false
+        if (!op.getName().equals("op")) {
+            Attribute realOp = stack.pop();
+            if (realOp.getValue().toString().equals("!")) {
+                //交换trueList和falseList
+                stack.push(expr);
+                stack.push(op);
+            }
+        } else {
+            String opS = (String) op.getValue();
+            String a = getNewTemp();
+            Expr addr = (Expr) expr.getValue(); // 数字 或者是 id
+            switch (opS) {
+                case "+":
+                    break;
+                case "-":
+                    gen(new Quadruple("minus", addr.getValue().toString(), "", a));
+                    break;
+                case "!":
+                    int instr1 = getNextInstr() + 3;
+                    gen(new Quadruple("==", addr.getValue().toString(), "0", instr1 + ""));
+                    gen(new Quadruple("=", "0", "", a));
+                    int instr2 = getNextInstr() + 2;
+                    gen(new Quadruple("goto", "", "", instr2 + ""));
+                    gen(new Quadruple("=", "1", "", a));
+            }
         }
     }
 
@@ -422,53 +500,54 @@ public class SemanticAction {
         return type;
     }
 
+    private int MakeExprDes(int des1, int des2) {
+        int des = Expr.Variable;
+        if (des1 == Expr.Constant && des2 == Expr.Constant) {
+            des = Expr.Constant;
+        }
+        return des;
+    }
+
+    public void ExprCalculateHandle(String op, Expr expr1, Expr expr2, int lineNum) throws Exception {
+        Expr expr1T = getRightAddrValueOne(expr1);
+        Expr expr2T = getRightAddrValueOne(expr2);
+        Type type1 = expr1T.getType();
+        Type type2 = expr2T.getType();
+        if (!type1.equals(type2)) {
+            throw new Exception(errorHandle("表达式类型不匹配", lineNum));
+        }
+        if (type1.equals(Type.Char) || type2.equals(Type.Char)) {
+            throw new Exception(errorHandle("Char型变量无法使用符号" + op, lineNum));
+        }
+        if (op.equals("%") && (!type1.equals(Type.Int) || !type2.equals(Type.Int))) {
+            throw new Exception(errorHandle("非Int类型无法使用" + op, lineNum));
+        }
+        String t1 = getNewTemp();
+        gen(new Quadruple(op, expr1T.getValue(), expr2T.getValue(), t1));
+        Expr expr = new Expr(MakeExprDes(expr1T.getDescription(), expr2T.getDescription()), t1, type1);
+        stack.push(new Attribute("addr", expr));
+    }
+
     /**
      * multiplicative_expression -> multiplicative_expression * unary_expression
      * unary_expression.addr
-     * unary_expression.type
      * multiplicative_expression.addr
-     * multiplicative_expression.type
      */
     public void multiplicative2(LeftNode production) throws Exception {
-        Attribute unary = stack.pop();
-        Type typeU = (Type) stack.pop().getValue();
-        Attribute multi = stack.pop();
-        Type typeM = (Type) stack.pop().getValue();
-        if (!(typeU.equals(Type.Int) || typeU.equals(Type.Float))) {
-            throw new Exception(typeU.getContent() + "不可应用*");
-        }
-        if (!(typeM.equals(Type.Int) || typeM.equals(Type.Float))) {
-            throw new Exception(typeM.getContent() + "不可应用*");
-        }
-        String a = getNewTemp();
-        gen(new Quadruple("*", multi.getValue().toString(), unary.getValue().toString(), a));
-        stack.push(new Attribute("type", mergeType(typeU, typeM)));
-        stack.push(new Attribute("addr", a));
+        Expr expr2 = (Expr) stack.pop().getValue();
+        Expr expr1 = (Expr) stack.pop().getValue();
+        ExprCalculateHandle("*", expr1, expr2, production.getValue().getLineNum());
     }
 
     /**
      * multiplicative_expression -> multiplicative_expression / unary_expression
      * unary_expression.addr
-     * unary_expression.type
      * multiplicative_expression.addr
-     * multiplicative_expression.type
      */
     public void multiplicative3(LeftNode production) throws Exception {
-        Attribute unary = stack.pop();
-        Type typeU = (Type) stack.pop().getValue();
-        Attribute multi = stack.pop();
-        Type typeM = (Type) stack.pop().getValue();
-        String a = getNewTemp();
-        if (!(typeU.equals(Type.Int) || typeU.equals(Type.Float))) {
-            throw new Exception(typeU.getContent() + "不可应用/");
-        }
-        if (!(typeM.equals(Type.Int) || typeM.equals(Type.Float))) {
-            throw new Exception(typeM.getContent() + "不可应用/");
-        }
-        gen(new Quadruple("/", multi.getValue().toString(), unary.getValue().toString(), a));
-        stack.push(new Attribute("type", mergeType(typeU, typeM)));
-        stack.push(new Attribute("addr", a));
-
+        Expr expr2 = (Expr) stack.pop().getValue();
+        Expr expr1 = (Expr) stack.pop().getValue();
+        ExprCalculateHandle("/", expr1, expr2, production.getValue().getLineNum());
     }
 
     /**
@@ -479,20 +558,9 @@ public class SemanticAction {
      * multiplicative_expression.type
      */
     public void multiplicative4(LeftNode production) throws Exception {
-        Attribute unary = stack.pop();
-        Type typeU = (Type) stack.pop().getValue();
-        Attribute multi = stack.pop();
-        Type typeM = (Type) stack.pop().getValue();
-        String a = getNewTemp();
-        if (!(typeU.equals(Type.Int))) {
-            throw new Exception(typeU.getContent() + "不可应用/");
-        }
-        if (!(typeM.equals(Type.Int))) {
-            throw new Exception(typeM.getContent() + "不可应用/");
-        }
-        gen(new Quadruple("/", multi.getValue().toString(), unary.getValue().toString(), a));
-        stack.push(new Attribute("type", Type.Int));
-        stack.push(new Attribute("addr", a));
+        Expr expr2 = (Expr) stack.pop().getValue();
+        Expr expr1 = (Expr) stack.pop().getValue();
+        ExprCalculateHandle("%", expr1, expr2, production.getValue().getLineNum());
     }
 
     /**
@@ -502,16 +570,10 @@ public class SemanticAction {
      * additive_expression.addr
      * additive_expression.type
      */
-    public void additive2(LeftNode production) {
-        String a = getNewTemp();
-        Attribute multi = stack.pop();
-        Type typeM = (Type) stack.pop().getValue();
-        Attribute addi = stack.pop();
-        Type typeA = (Type) stack.pop().getValue();
-        //异常处理
-        gen(new Quadruple("+", multi.getValue().toString(), addi.getValue().toString(), a));
-        stack.push(new Attribute("type", mergeType(typeA, typeM)));
-        stack.push(new Attribute("addr", a));
+    public void additive2(LeftNode production) throws Exception {
+        Expr expr2 = (Expr) stack.pop().getValue();
+        Expr expr1 = (Expr) stack.pop().getValue();
+        ExprCalculateHandle("+", expr1, expr2, production.getValue().getLineNum());
     }
 
     /**
@@ -521,54 +583,57 @@ public class SemanticAction {
      * additive_expression.addr
      * additive_expression.type
      */
-    public void additive3(LeftNode production) {
-        String a = getNewTemp();
-        Attribute multi = stack.pop();
-        Type typeM = (Type) stack.pop().getValue();
-        Attribute addi = stack.pop();
-        Type typeA = (Type) stack.pop().getValue();
-        //异常处理
-        gen(new Quadruple("-", multi.getValue().toString(), addi.getValue().toString(), a));
-        stack.push(new Attribute("type", mergeType(typeA, typeM)));
-        stack.push(new Attribute("addr", a));
+    public void additive3(LeftNode production) throws Exception {
+        Expr expr2 = (Expr) stack.pop().getValue();
+        Expr expr1 = (Expr) stack.pop().getValue();
+        ExprCalculateHandle("-", expr1, expr2, production.getValue().getLineNum());
+    }
+
+    /**
+     * 处理各种不等式
+     */
+    public void InequalityHandle(String op, Expr expr1, Expr expr2, int lineNum) throws Exception {
+        Expr expr1T = getRightAddrValueOne(expr1);
+        Expr expr2T = getRightAddrValueOne(expr2);
+        String control = "boolean";
+        if (!stack.isEmpty() && stack.peek().getName().equals("control")) {
+            stack.pop();
+            control = "control";
+        }
+        if (expr1T.getType().equals(Type.Char) || expr2T.getType().equals(Type.Char)) {
+            throw new Exception(errorHandle("Char型变量无法使用符号" + op, lineNum));
+        }
+        if (control.equals("control")) {
+            List<Integer> BTrueList = makeList(getNextInstr());
+            List<Integer> BFalseList = makeList(getNextInstr() + 1);
+            gen(new Quadruple(op, expr1T.getValue(), expr2T.getValue(), "_"));
+            gen(new Quadruple("goto", "", "", "_"));
+            stack.push(new Attribute("falseList", BFalseList));
+            stack.push(new Attribute("trueList", BTrueList));
+        } else {
+            //算术运算
+            String t1 = getNewTemp();
+            int instr1 = getNextInstr() + 3;
+            gen(new Quadruple(op, expr1T.getValue(), expr2T.getValue(), "" + instr1));
+            gen(new Quadruple("=", "0", "", t1)); //false
+            int instr2 = getNextInstr() + 2;
+            gen(new Quadruple("goto", "", "", "" + instr2));
+            gen(new Quadruple("=", "1", "", "a")); //true
+            Expr expr = new Expr(MakeExprDes(expr1T.getDescription(), expr2T.getDescription()), t1, Type.Boolean);
+            stack.push(new Attribute("addr", expr));
+        }
     }
 
     /**
      * relational_expression -> relational_expression > additive_expression
      * additive_expression.addr
-     * additive_expression.type
      * relational_expression.addr
-     * relational_expression.type
      * control?
      */
-    public void relation2(LeftNode production) {
-        Attribute addi = stack.pop();
-        Attribute TypeA = stack.pop();
-        Attribute rela = stack.pop();
-        Attribute TypeR = stack.pop();
-        //确定是算术运算还是控制流
-        if (!stack.isEmpty()) {
-            if (stack.peek().getName().equals("control")) { //控制流
-                stack.pop();
-                List<Integer> BTrueList = makeList(getNextInstr());
-                List<Integer> BFalseList = makeList(getNextInstr() + 1);
-                gen(new Quadruple(">", rela.getValue().toString(), addi.getValue().toString(), "_"));
-                gen(new Quadruple("goto", "", "", "_"));
-                stack.push(new Attribute("falseList", BFalseList));
-                stack.push(new Attribute("trueList", BTrueList));
-                return;
-            }
-        }
-        //算术运算,使用数值表示
-        String a = getNewTemp();
-        int instr = getNextInstr() + 3;
-        gen(new Quadruple(">", rela.getValue().toString(), addi.getValue().toString(), "" + instr));
-        gen(new Quadruple("=", "0", "", a)); //false
-        int instr1 = getNextInstr() + 2;
-        gen(new Quadruple("goto", "", "", "" + instr1));
-        gen(new Quadruple("=", "1", "", "a")); //true
-        stack.push(new Attribute("type", Type.Boolean));
-        stack.push(new Attribute("addr", a));
+    public void relation2(LeftNode production) throws Exception {
+        Expr expr2 = (Expr) stack.pop().getValue();
+        Expr expr1 = (Expr) stack.pop().getValue();
+        InequalityHandle(">", expr1, expr2, production.getValue().getLineNum());
     }
 
     /**
@@ -584,34 +649,10 @@ public class SemanticAction {
      * t3=1 (true)
      * (next)
      */
-    public void relation3(LeftNode production) {
-        Attribute addi = stack.pop();
-        Attribute TypeA = stack.pop();
-        Attribute rela = stack.pop();
-        Attribute TypeR = stack.pop();
-        //确定是算术运算还是控制流
-        if (!stack.isEmpty()) {
-            if (stack.peek().getName().equals("control")) { //控制流
-                stack.pop();
-                List<Integer> BTrueList = makeList(getNextInstr());
-                List<Integer> BFalseList = makeList(getNextInstr() + 1);
-                gen(new Quadruple("<", rela.getValue().toString(), addi.getValue().toString(), "_"));
-                gen(new Quadruple("goto", "", "", "_"));
-                stack.push(new Attribute("falseList", BFalseList));
-                stack.push(new Attribute("trueList", BTrueList));
-                return;
-            }
-        }
-        //算术运算,使用数值表示
-        String a = getNewTemp();
-        int instr = getNextInstr() + 3;
-        gen(new Quadruple("<", rela.getValue().toString(), addi.getValue().toString(), "" + instr));
-        gen(new Quadruple("=", "0", "", a)); //false
-        int instr1 = getNextInstr() + 2;
-        gen(new Quadruple("goto", "", "", "" + instr1));
-        gen(new Quadruple("=", "1", "", "a")); //true
-        stack.push(new Attribute("type", Type.Boolean));
-        stack.push(new Attribute("addr", a));
+    public void relation3(LeftNode production) throws Exception {
+        Expr expr2 = (Expr) stack.pop().getValue();
+        Expr expr1 = (Expr) stack.pop().getValue();
+        InequalityHandle("<", expr1, expr2, production.getValue().getLineNum());
     }
 
     /**
@@ -622,34 +663,10 @@ public class SemanticAction {
      * relational_expression.type
      * control?
      */
-    public void relation4(LeftNode production) {
-        Attribute addi = stack.pop();
-        Attribute TypeA = stack.pop();
-        Attribute rela = stack.pop();
-        Attribute TypeR = stack.pop();
-        //确定是算术运算还是控制流
-        if (!stack.isEmpty()) {
-            if (stack.peek().getName().equals("control")) { //控制流
-                stack.pop();
-                List<Integer> BTrueList = makeList(getNextInstr());
-                List<Integer> BFalseList = makeList(getNextInstr() + 1);
-                gen(new Quadruple(">=", rela.getValue().toString(), addi.getValue().toString(), "_"));
-                gen(new Quadruple("goto", "", "", "_"));
-                stack.push(new Attribute("falseList", BFalseList));
-                stack.push(new Attribute("trueList", BTrueList));
-                return;
-            }
-        }
-        //算术运算,使用数值表示
-        String a = getNewTemp();
-        int instr = getNextInstr() + 3;
-        gen(new Quadruple(">=", rela.getValue().toString(), addi.getValue().toString(), "" + instr));
-        gen(new Quadruple("=", "0", "", a)); //false
-        int instr1 = getNextInstr() + 2;
-        gen(new Quadruple("goto", "", "", "" + instr1));
-        gen(new Quadruple("=", "1", "", "a")); //true
-        stack.push(new Attribute("type", Type.Boolean));
-        stack.push(new Attribute("addr", a));
+    public void relation4(LeftNode production) throws Exception {
+        Expr expr2 = (Expr) stack.pop().getValue();
+        Expr expr1 = (Expr) stack.pop().getValue();
+        InequalityHandle(">=", expr1, expr2, production.getValue().getLineNum());
     }
 
     /**
@@ -660,34 +677,10 @@ public class SemanticAction {
      * relational_expression.type
      * control?
      */
-    public void relation5(LeftNode production) {
-        Attribute addi = stack.pop();
-        Attribute TypeA = stack.pop();
-        Attribute rela = stack.pop();
-        Attribute TypeR = stack.pop();
-        //确定是算术运算还是控制流
-        if (!stack.isEmpty()) {
-            if (stack.peek().getName().equals("control")) { //控制流
-                stack.pop();
-                List<Integer> BTrueList = makeList(getNextInstr());
-                List<Integer> BFalseList = makeList(getNextInstr() + 1);
-                gen(new Quadruple("<=", rela.getValue().toString(), addi.getValue().toString(), "_"));
-                gen(new Quadruple("goto", "", "", "_"));
-                stack.push(new Attribute("falseList", BFalseList));
-                stack.push(new Attribute("trueList", BTrueList));
-                return;
-            }
-        }
-        //算术运算,使用数值表示
-        String a = getNewTemp();
-        int instr = getNextInstr() + 3;
-        gen(new Quadruple("<=", rela.getValue().toString(), addi.getValue().toString(), "" + instr));
-        gen(new Quadruple("=", "0", "", a)); //false
-        int instr1 = getNextInstr() + 2;
-        gen(new Quadruple("goto", "", "", "" + instr1));
-        gen(new Quadruple("=", "1", "", "a")); //true
-        stack.push(new Attribute("type", Type.Boolean));
-        stack.push(new Attribute("addr", a));
+    public void relation5(LeftNode production) throws Exception {
+        Expr expr2 = (Expr) stack.pop().getValue();
+        Expr expr1 = (Expr) stack.pop().getValue();
+        InequalityHandle("<=", expr1, expr2, production.getValue().getLineNum());
     }
 
     /**
@@ -698,33 +691,10 @@ public class SemanticAction {
      * equality_expression.type
      * control?getName()
      */
-    public void equality2(LeftNode production) {
-        Attribute rela = stack.pop();
-        Attribute TypeR = stack.pop();
-        Attribute equa = stack.pop();
-        Attribute TypeE = stack.pop();
-        if (!stack.isEmpty()) {
-            if (stack.peek().getName().equals("control")) {
-                stack.pop();
-                List<Integer> BTrueList = makeList(getNextInstr());
-                List<Integer> BFalseList = makeList(getNextInstr() + 1);
-                gen(new Quadruple("==", equa.getValue().toString(), rela.getValue().toString(), "_"));
-                gen(new Quadruple("goto", "", "", "_"));
-                stack.push(new Attribute("falseList", BFalseList));
-                stack.push(new Attribute("trueList", BTrueList));
-                return;
-            }
-        }
-        //算术运算,使用数值表示
-        String a = getNewTemp();
-        int instr = getNextInstr() + 3;
-        gen(new Quadruple("==", equa.getValue().toString(), rela.getValue().toString(), "" + instr));
-        gen(new Quadruple("=", "0", "", a)); //false
-        int instr1 = getNextInstr() + 2;
-        gen(new Quadruple("goto", "", "", "" + instr1));
-        gen(new Quadruple("=", "1", "", "a")); //true
-        stack.push(new Attribute("type", Type.Boolean));
-        stack.push(new Attribute("addr", a));
+    public void equality2(LeftNode production) throws Exception {
+        Expr expr2 = (Expr) stack.pop().getValue();
+        Expr expr1 = (Expr) stack.pop().getValue();
+        InequalityHandle("==", expr1, expr2, production.getValue().getLineNum());
     }
 
     /**
@@ -735,33 +705,10 @@ public class SemanticAction {
      * equality_expression.type
      * control?getName()
      */
-    public void equality3(LeftNode production) {
-        Attribute rela = stack.pop();
-        Attribute TypeR = stack.pop();
-        Attribute equa = stack.pop();
-        Attribute TypeE = stack.pop();
-        if (!stack.isEmpty()) {
-            if (stack.peek().getName().equals("control")) {
-                stack.pop();
-                List<Integer> BTrueList = makeList(getNextInstr());
-                List<Integer> BFalseList = makeList(getNextInstr() + 1);
-                gen(new Quadruple("!=", equa.getValue().toString(), rela.getValue().toString(), "_"));
-                gen(new Quadruple("goto", "", "", "_"));
-                stack.push(new Attribute("falseList", BFalseList));
-                stack.push(new Attribute("trueList", BTrueList));
-                return;
-            }
-        }
-        //算术运算,使用数值表示
-        String a = getNewTemp();
-        int instr = getNextInstr() + 3;
-        gen(new Quadruple("!=", equa.getValue().toString(), rela.getValue().toString(), "" + instr));
-        gen(new Quadruple("=", "0", "", a)); //false
-        int instr1 = getNextInstr() + 2;
-        gen(new Quadruple("goto", "", "", "" + instr1));
-        gen(new Quadruple("=", "1", "", "a")); //true
-        stack.push(new Attribute("type", Type.Boolean));
-        stack.push(new Attribute("addr", a));
+    public void equality3(LeftNode production) throws Exception {
+        Expr expr2 = (Expr) stack.pop().getValue();
+        Expr expr1 = (Expr) stack.pop().getValue();
+        InequalityHandle("!=", expr1, expr2, production.getValue().getLineNum());
     }
 
     public void m100(LeftNode p) {
@@ -772,13 +719,13 @@ public class SemanticAction {
     /**
      * M8 -> epsilon
      * 在逻辑运算中向后传递该运算是控制流还是普通布尔表达式计算
+     * 获取下一行的行号,使得trueList和falseList可以回填
      */
     public void m8(LeftNode p) {
-        Attribute addr = stack.pop();
-        Attribute type = stack.peek();
-        stack.push(addr);
+        Attribute a = stack.peek();
         stack.push(new Attribute("instr", getNextInstr()));
-        if (!Type.Boolean.equals(type.getValue())) {//算术型
+        assert a != null;
+        if (!(a.getValue() instanceof Expr)) {
             stack.push(new Attribute("control", null));
         }
     }
@@ -793,10 +740,8 @@ public class SemanticAction {
      * logical_and_expression_1.falseList
      * or
      * equality_expression.addr(t1)
-     * equality_expression.type =boolean
      * M.nextInstr
      * logical_and_expression_1.addr(t2)
-     * logical_and_expression_1.boolean
      * if t1==0 goto false
      * if t2==0 goto false
      * t3=1
@@ -804,33 +749,34 @@ public class SemanticAction {
      * t3=0 (false)
      */
     public void logical_and2(LeftNode p) {
-        Attribute euqaAddr = stack.pop();
-        Attribute typeE = stack.pop();
-        Integer instr = (Integer) stack.pop().getValue();
-        Attribute logiAddr = stack.pop();
-        Attribute typeL = stack.pop();
-        if (!Type.Boolean.equals(typeE.getValue())) { //控制流
-            List<Integer> B2trueList = (List<Integer>) euqaAddr.getValue();
-            List<Integer> B2falseList = (List<Integer>) typeE.getValue();
-            List<Integer> B1trueList = (List<Integer>) logiAddr.getValue();
-            List<Integer> B1falseList = (List<Integer>) typeL.getValue();
-            List<Integer> BFalseList = merge(B1falseList, B2falseList);
-            backPatch(B1trueList, instr);
-            stack.push(new Attribute("falseList", BFalseList));
-            stack.push(new Attribute("trueList", B2trueList));
-        } else { //算术
+        Attribute a1 = stack.peek();
+        assert a1 != null;
+        if (a1.getValue() instanceof Expr) {
+            Expr expr2 = (Expr) stack.pop().getValue();
+            stack.pop();
+            Expr expr1 = (Expr) stack.pop().getValue();
             String t3 = getNewTemp();
-            String t1 = logiAddr.getValue().toString();
-            String t2 = euqaAddr.getValue().toString();
-            int False = getNextInstr() + 5;
+            String t1 = expr1.getValue();
+            String t2 = expr2.getValue();
+            int False = getNextInstr() + 4;
             gen(new Quadruple("==", t1, "0", "" + False));
             gen(new Quadruple("==", t2, "0", "" + False));
             gen(new Quadruple("=", "1", "", t3));
-            int next = getNextInstr() + 2;
-            gen(new Quadruple("goto", "", "", "" + next));
+            int instr = getNextInstr() + 2;
+            gen(new Quadruple("goto", "", "", "" + instr + ""));
             gen(new Quadruple("=", "0", "", t3));
-            stack.push(new Attribute("type", Type.Boolean));
-            stack.push(new Attribute("addr", t3));
+            Expr expr = new Expr(MakeExprDes(expr1.getDescription(), expr2.getDescription()), t3, Type.Boolean);
+            stack.push(new Attribute("addr", expr));
+        } else {
+            List<Integer> B2trueList = (List<Integer>) stack.pop().getValue();
+            List<Integer> B2falseList = (List<Integer>) stack.pop().getValue();
+            Integer instr = (Integer) stack.pop().getValue();
+            List<Integer> B1trueList = (List<Integer>) stack.pop().getValue();
+            List<Integer> B1falseList = (List<Integer>) stack.pop().getValue();
+            backPatch(B1trueList, instr);
+            List<Integer> BFalseList = merge(B1falseList, B2falseList);
+            stack.push(new Attribute("falseList", BFalseList));
+            stack.push(new Attribute("trueList", B2trueList));
         }
     }
 
@@ -855,118 +801,91 @@ public class SemanticAction {
      * t3=1 (true)
      */
     public void logical_or2(LeftNode p) {
-        Attribute euqaAddr = stack.pop();
-        Attribute typeE = stack.pop();
-        Integer instr = (Integer) stack.pop().getValue();
-        Attribute logiAddr = stack.pop();
-        Attribute typeL = stack.pop();
-        if (!Type.Boolean.equals(typeE.getValue())) { //控制流
-            List<Integer> B2trueList = (List<Integer>) euqaAddr.getValue();
-            List<Integer> B2falseList = (List<Integer>) typeE.getValue();
-            List<Integer> B1trueList = (List<Integer>) logiAddr.getValue();
-            List<Integer> B1falseList = (List<Integer>) typeL.getValue();
+        Attribute a1 = stack.peek();
+        assert a1 != null;
+        if (a1.getValue() instanceof Expr) {
+            Expr expr2 = (Expr) stack.pop().getValue();
+            stack.pop();
+            Expr expr1 = (Expr) stack.pop().getValue();
+            String t3 = getNewTemp();
+            String t1 = expr1.getValue();
+            String t2 = expr2.getValue();
+            int True = getNextInstr() + 4;
+            gen(new Quadruple("==", t1, "1", "" + True));
+            gen(new Quadruple("==", t2, "1", "" + True));
+            gen(new Quadruple("=", "0", "", t3));
+            int instr = getNextInstr() + 2;
+            gen(new Quadruple("goto", "", "", "" + instr + ""));
+            gen(new Quadruple("=", "1", "", t3));
+            Expr expr = new Expr(MakeExprDes(expr1.getDescription(), expr2.getDescription()), t3, Type.Boolean);
+            stack.push(new Attribute("addr", expr));
+        } else {
+            List<Integer> B2trueList = (List<Integer>) stack.pop().getValue();
+            List<Integer> B2falseList = (List<Integer>) stack.pop().getValue();
+            Integer instr = (Integer) stack.pop().getValue();
+            List<Integer> B1trueList = (List<Integer>) stack.pop().getValue();
+            List<Integer> B1falseList = (List<Integer>) stack.pop().getValue();
             List<Integer> BTrueList = merge(B1trueList, B2trueList);
             backPatch(B1falseList, instr);
             stack.push(new Attribute("falseList", B2falseList));
             stack.push(new Attribute("trueList", BTrueList));
-        } else { //算术
-            String t3 = getNewTemp();
-            String t1 = logiAddr.getValue().toString();
-            String t2 = euqaAddr.getValue().toString();
-            int True = getNextInstr() + 5;
-            gen(new Quadruple("==", t1, "1", "" + True));
-            gen(new Quadruple("==", t2, "1", "" + True));
-            gen(new Quadruple("=", "0", "", t3));
-            int next = getNextInstr() + 2;
-            gen(new Quadruple("goto", "", "", "" + next));
-            gen(new Quadruple("=", "1", "", t3));
-            stack.push(new Attribute("type", Type.Boolean));
-            stack.push(new Attribute("addr", t3));
+        }
+    }
+
+    public Type calculateLeftType(Expr expr) {
+        if (expr.getType() instanceof Array) {
+            return restoreType(expr.getType());
+        } else if (expr.getType() instanceof Struct) {
+            Struct struct = (Struct) expr.getType();
+            return struct.getContentById(expr.getValue()).getType();
+        } else {
+            return expr.getType();
         }
     }
 
     /**
-     * assignment_expression -> unary_expression assignment_operator assignment_expression
+     * assignment_expression -> unary_expression = assignment_expression
      * assignment_expression.addr
-     * assignment_expression.type
-     * assignment_operator.op
      * unary_expression.addr
-     * unary_expression.type
      */
     public void assignment2(LeftNode p) throws Exception {
-        Attribute assignAddr = stack.pop();
-        Attribute typeA = stack.pop();
-        String op = stack.pop().getValue().toString();
-        Attribute unaryAddr = stack.pop();
-        Attribute unaryType = stack.pop();
-        if (typeA.getValue().equals(unaryType.getValue())) {
-            //如果是=，则不需要用到第二个参数
-            if (op.equals("=")) {
-                gen(new Quadruple(op, assignAddr.getValue().toString(), "", unaryAddr.getValue().toString()));
-            } else {
-                gen(new Quadruple(op, assignAddr.getValue().toString(), unaryAddr.getValue().toString(), unaryAddr.getValue().toString()));
-            }
-        } else {
-            throw new Exception("赋值号左右类型不匹配");
+        Expr expr2 = (Expr) stack.pop().getValue();
+        Expr expr1 = (Expr) stack.pop().getValue();
+        Expr exprRight = getRightAddrValueOne(expr2);
+        if (expr1.getDescription() == Expr.Constant) {
+            throw new Exception(errorHandle(expr1.getValue() + "不是一个左值", p.getValue().getLineNum()));
         }
-    }
-
-    /**
-     * assignment_operator -> =
-     */
-    public void assignmentOp1(LeftNode p) {
-        stack.push(new Attribute("assOp", "="));
-    }
-
-    /**
-     * assignment_operator -> +=
-     */
-    public void assignmentOp2(LeftNode p) {
-        stack.push(new Attribute("assOp", "+"));
-    }
-
-    /**
-     * assignment_operator -> -=
-     */
-    public void assignmentOp3(LeftNode p) {
-        stack.push(new Attribute("assOp", "-"));
-    }
-
-    /**
-     * assignment_operator -> *=
-     */
-    public void assignmentOp4(LeftNode p) {
-        stack.push(new Attribute("assOp", "*"));
-    }
-
-    /**
-     * assignment_operator -> /=
-     */
-    public void assignmentOp5(LeftNode p) {
-        stack.push(new Attribute("assOp", "/"));
-    }
-
-
-    /**
-     * expression_statement -> ;
-     */
-    public void expressionS1(LeftNode p) {
-        List<Integer> list = makeList(getNextInstr());
-        stack.push(new Attribute("nextList", list));
+        if (!calculateLeftType(expr1).equals(exprRight.getType())) {
+            throw new Exception(errorHandle("赋值语句类型不匹配", p.getValue().getLineNum()));
+        }
+        if (expr1.getType() instanceof Array) {
+            String offset = expr1.getValue();
+            String base = expr1.getBase();
+            gen(new Quadruple("[]=", exprRight.getValue(), "", base + "[" + offset + "]"));
+        } else if (expr1.getType() instanceof Struct) {
+            String id = expr1.getValue();
+            String base = expr1.getBase();
+            gen(new Quadruple(".=", exprRight.getValue(), "", base + "." + id));
+        } else {
+            gen(new Quadruple("=", exprRight.getValue(), "", expr1.getValue()));
+        }
     }
 
     /**
      * expression_statement -> expression ;
      */
     public void expressionS2(LeftNode p) {
-        List<Integer> list = makeList(getNextInstr());
-        stack.push(new Attribute("nextList", list));
+        List<Integer> list = new ArrayList<>();
+        stack.push(new Attribute("ExprNextList", list));
     }
 
     //从头开始
 
+    ///////////////////////声明语句/////////////////////////
+
     /**
      * M2 -> epsilon
+     * 没有使用
      */
     public void m2(LeftNode production) {
         SymbolTable st = new SymbolTable();
@@ -975,20 +894,34 @@ public class SemanticAction {
     }
 
     /**
+     * declaration_list -> declaration
+     */
+    public void declaration_list1(LeftNode p) {
+        List<Integer> list = new ArrayList<>();
+        stack.push(new Attribute("DecNextList", list));
+    }
+
+    /**
+     * declaration_list -> declaration_list declaration
+     */
+    public void declaration_list2(LeftNode p) {
+
+    }
+
+    /**
      * declaration -> type_specifier ;
+     * int;也合法
      */
     public void declaration1(LeftNode p) {
-        List<Integer> list = makeList(getNextInstr());
-        stack.push(new Attribute("nextList", list));
+        stack.pop(); //弹出没有使用的type
     }
 
     /**
      * declaration -> type_specifier init_declarator_list ;
+     * 增加nextList属性只是为了和其他语句保持一致型
      */
     public void declaration2(LeftNode p) {
-        stack.pop(); //弹出type
-        List<Integer> list = makeList(getNextInstr());
-        stack.push(new Attribute("nextList", list));
+        stack.pop(); //弹出保留的type
     }
 
     /**
@@ -1025,152 +958,247 @@ public class SemanticAction {
     public void type_specifier5(LeftNode p) {
         stack.push(new Attribute("type", Type.Void));
     }
+
     //结构体跳过
+    ///////////////////////结构体/////////////////////////
 
     /**
-     * init_declarator_list -> init_declarator
+     * type_specifier -> struct_specifier
+     * 交给具体的结构体标识符来push一个type
      */
-    public void init_declarator_list1(LeftNode p) {
+    public void type_specifier6(LeftNode p) {
 
     }
 
     /**
-     * init_declarator_list -> init_declarator_list , init_declarator
+     * struct_specifier -> struct id { struct_declaration_list }
+     * # id 是这个结构体的名字,可以使用这个名字来引用结构体
+     * struct_declaration_list.structArgs (SymbolTable)
      */
-    public void init_declarator_list2(LeftNode p) {
-
+    public void struct_specifier1(LeftNode p) throws Exception {
+        SymbolTable st = (SymbolTable) stack.pop().getValue();
+        String id = p.getRight().get(1).getTokenDescription();
+        Struct struct = new Struct(st, id);
+        if (findStructById(id) == null) {
+            structs.add(struct);
+            stack.push(new Attribute("struct", struct));
+        } else {
+            throw new Exception(errorHandle("结构体明明重复出现", p.getValue().getLineNum()));
+        }
     }
 
     /**
-     * init_declarator -> declarator
-     * declarator.id
-     * type_specifier.type
-     * 将一个id加入符号表条目中
+     * struct_specifier -> struct { struct_declaration_list }
+     * # 匿名结构体,不知道名字
      */
-    public void init_declarator1(LeftNode p) {
+    public void struct_specifier2(LeftNode p) {
+        SymbolTable st = (SymbolTable) stack.pop().getValue();
+        Struct struct = new Struct(st, "temp");
+        stack.push(new Attribute("struct", struct));
+    }
+
+    private Struct findStructById(String id) {
+        for (Struct struct : structs) {
+            if (struct.getName().equals(id)) {
+                return struct;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * struct_specifier -> struct id
+     */
+    public void struct_specifier3(LeftNode p) {
+        String id = p.getRight().get(1).getTokenDescription();
+        Struct struct = findStructById(id);
+        if (struct != null) {
+            stack.push(new Attribute("struct", struct));
+        }
+    }
+
+    /**
+     * struct_declaration_list -> struct_declaration
+     * struct_declaration_list.structArgs
+     */
+    public void struct_declaration_list1(LeftNode p) {
+        SymbolTable structArgs = new SymbolTable();
+        SymbolTableEntry ste = (SymbolTableEntry) stack.pop().getValue();
+        structArgs.addEntry(ste);
+        stack.push(new Attribute("structArgs_list", structArgs));
+    }
+
+    /**
+     * struct_declaration_list -> struct_declaration_list struct_declaration
+     * struct_declaration.ste
+     * struct_declaration_list.structArgs
+     */
+    public void struct_declaration_list2(LeftNode p) {
+        SymbolTableEntry ste = (SymbolTableEntry) stack.pop().getValue();
+        assert stack.peek() != null;
+        SymbolTable structArgs = (SymbolTable) stack.peek().getValue();
+        structArgs.addEntry(ste);
+    }
+
+    /**
+     * struct_declaration -> type_specifier var_declarator ;
+     */
+    public void struct_declaration1(LeftNode p) {
         Attribute id = stack.pop();
         Attribute type = stack.pop();
-        SymbolTable st = symTabStack.peek();
-        st.addEntry(new SymbolTableEntry(id.getValue().toString(), (Type) type.getValue()));
-        stack.push(type);
+        SymbolTableEntry ste = new SymbolTableEntry(id.getValue().toString(), (Type) type.getValue());
+        stack.push(new Attribute("structArg", ste));
     }
 
     /**
-     * init_declarator -> declarator = initializer
+     * var_declarator -> id
+     * # 使用临时的名字来引用结构体
+     */
+    public void var_declarator1(LeftNode p) {
+        String lexeme = p.getRight().get(0).getTokenDescription();
+        stack.push(new Attribute("id", lexeme));
+    }
+
+    /**
+     * var_declarator -> var_declarator [ integer ]
+     * var_declarator.id
+     * var_declarator.type
+     */
+    public void var_declarator2(LeftNode p) throws Exception {
+        Attribute id = stack.pop();
+        Type type = (Type) stack.pop().getValue();
+        int integer = Integer.parseInt(p.getRight().get(2).getTokenDescription());
+        Array array = new Array(integer, type);
+        stack.push(new Attribute("type", array));
+        stack.push(id);
+    }
+
+    /**
+     * init_declarator -> var_declarator
+     * var_declarator.id
+     * var_declarator.type
+     * 将一个id加入符号表条目中
+     */
+    public void init_declarator1(LeftNode p) throws Exception {
+        Attribute id = stack.pop();
+        Type type = (Type) stack.pop().getValue();
+        SymbolTable st = symTabStack.peek();
+        SymbolTableEntry ste = new SymbolTableEntry(id.getValue().toString(), type);
+        if (st.contains(ste)) {
+            throw new Exception(errorHandle(id.getValue().toString() + "重复声明", p.getValue().getLineNum()));
+        } else {
+            st.addEntry(ste);
+            stack.push(new Attribute("type", restoreType(type)));
+        }
+
+    }
+
+    /**
+     * init_declarator -> var_declarator = conditional_expression
      * initializer.addr
-     * initializer.type
      * declarator.id
      * type_specifier.type
      */
     public void init_declarator2(LeftNode p) throws Exception {
-        Attribute addrI = stack.pop();
-        Attribute typeI = stack.pop();
+        Expr expr = (Expr) stack.pop().getValue();
+        Expr exprS = getRightAddrValueOne(expr);
         Attribute id = stack.pop();
-        Attribute typeD = stack.pop();
-        if (typeD.getValue().equals(typeI.getValue())) {
-            gen(new Quadruple("=", addrI.getValue().toString(), "", id.getValue().toString()));
+        Type typeD = (Type) stack.pop().getValue();
+        if (typeD.equals(expr.getType())) {
             SymbolTable st = symTabStack.peek();
-            st.addEntry(new SymbolTableEntry(id.getValue().toString(), (Type) typeD.getValue()));
-            stack.push(typeD);
+            SymbolTableEntry ste = new SymbolTableEntry(id.getValue().toString(), typeD);
+            if (st.contains(ste)) {
+                throw new Exception(errorHandle(id.getValue().toString() + "重复声明", p.getValue().getLineNum()));
+            } else {
+                gen(new Quadruple("=", exprS.getValue(), "", id.getValue().toString()));
+                st.addEntry(new SymbolTableEntry(id.getValue().toString(), typeD));
+                stack.push(new Attribute("type", restoreType(typeD)));
+            }
         } else {
-            throw new Exception("初始化类型不匹配");
+            throw new Exception(errorHandle("初始化类型不匹配", p.getValue().getLineNum()));
         }
     }
 
-    /**
-     * declarator -> direct_declarator
-     */
-    public void declarator1(LeftNode p) {
-    }
-
-    /**
-     * direct_declarator -> id
-     * direct_declarator.id
-     * type_specifier.type
-     */
-    public void direct_declarator1(LeftNode p) {
-        String lexeme = p.getRight().get(0).getTokenDescription();
-        stack.add(new Attribute("id", lexeme));
-    }
-
-    /**
-     * direct_declarator -> direct_declarator [ constant_expression ]
-     * constant_expression.addr
-     * constant_expression.type
-     * direct_declarator.id
-     * type_specifier.type(数组or函数)
-     */
-    public void direct_declarator2(LeftNode p) throws Exception {
-        Attribute addr = stack.pop();
-        Type typeC = (Type) stack.pop().getValue();
-        Attribute id = stack.pop();
-        Attribute type = stack.pop();
-        if (typeC.equals(Type.Int)) {
-            Array a = new Array((Integer) addr.getValue(), typeC);
-            stack.push(new Attribute("type", a));
-            stack.push(new Attribute("id", id));
-        } else {
-            throw new Exception("声明数组使用不是整数");
+    public Type restoreType(Type type) {
+        Type ret = type;
+        while (ret instanceof Array) {
+            Array array = (Array) ret;
+            ret = array.getType();
         }
-
+        return ret;
     }
 
-    /**
-     * direct_declarator -> direct_declarator M3 ( parameter_list )
-     * direct_declarator -> direct_declarator M3 ( )
-     */
-    public void direct_declarator3(LeftNode p) {
-
-    }
+    ////////////////////函数定义////////////////////////////////
 
     /**
-     * M3 -> epsilon
-     * 为该函数建立词条，并且进入该函数的的符号表
+     * func_declarator -> id ( parameter_list )
      */
-    public void m3(LeftNode p) {
-        Attribute id = stack.pop();
-        assert id.getName().equals("id");
-        Attribute returnType = stack.pop();
+    public void func_declarator1(LeftNode p) {
+        assert stack.peek() != null;
+        SymbolTable args = (SymbolTable) stack.pop().getValue();
+        String funcName = p.getRight().get(0).getTokenDescription();
+        Type returnType = (Type) stack.pop().getValue();
+        Function function = new Function(funcName, returnType);
+        function.setArgs(args);
         SymbolTable st = symTabStack.peek();
-        SymbolTable funcSt = new SymbolTable();
-        Function func = new Function((Type) returnType.getValue());
-        func.setFuncBody(funcSt);
-        funcSt.setPrevious(st);
-        st.addEntry(new SymbolTableEntry(id.getValue().toString(), func));
-        symTabStack.push(funcSt);
+        st.addEntry(new SymbolTableEntry(funcName, function));
+        symTabStack.push(args);
+        gen(new Quadruple("comment", "", "", funcName));
+        stack.push(new Attribute("funcName", funcName));
+    }
+
+    /**
+     * func_declarator -> id ( )
+     * type:returnType
+     */
+    public void func_declarator2(LeftNode p) {
+        String name = p.getRight().get(0).getTokenDescription();
+        Type returnType = (Type) stack.pop().getValue();
+        Function function = new Function(name, returnType);
+        //当作函数开始的注释
+        gen(new Quadruple("comment", "", "", name));
+        SymbolTable st = symTabStack.peek();
+        st.addEntry(new SymbolTableEntry(name, function));
+        stack.push(new Attribute("funcName", name));
     }
 
     /**
      * parameter_list -> parameter_declaration
+     * 函数的参数
      */
     public void parameter_list1(LeftNode p) {
-
+        SymbolTable args = new SymbolTable();
+        args.setPrevious(symTabStack.peek());
+        SymbolTableEntry ste = (SymbolTableEntry) stack.pop().getValue();
+        args.addEntry(ste);
+        stack.push(new Attribute("args_list", args));
     }
 
     /**
      * parameter_list -> parameter_list , parameter_declaration
      */
     public void parameter_list2(LeftNode p) {
-
+        SymbolTableEntry ste = (SymbolTableEntry) stack.pop().getValue();
+        assert stack.peek() != null;
+        SymbolTable args = (SymbolTable) stack.peek().getValue();
+        args.addEntry(ste);
     }
 
     /**
-     * parameter_declaration -> type_specifier declarator
-     * declarator.id
-     * declarator.type
-     * 向当前符号表中加入函数参数
+     * parameter_declaration -> type_specifier var_declarator
+     * var_declarator.id
+     * var_declarator.type
      */
     public void parameter_declaration1(LeftNode p) {
         Attribute id = stack.pop();
         Attribute type = stack.pop();
-        SymbolTable st = symTabStack.peek();
-        st.addEntry(new SymbolTableEntry(id.getValue().toString(), (Type) type.getValue()));
-        stack.push(type);
+        SymbolTableEntry ste = new SymbolTableEntry(id.getValue().toString(), (Type) type.getValue());
+        stack.push(new Attribute("arg", ste));
     }
 
     /**
-     * function_definition -> type_specifier declarator compound_statement
-     * 结束一个函数定义
+     * function_definition -> type_specifier func_declarator compound_statement
+     * 结束一个函数定义,弹出设定参数的语句块
      * compound_statement.nextList有return在最后的话是没有语句需要回填的
      * 如果有return,则函数不需要回填
      * 如果没有return
@@ -1181,39 +1209,7 @@ public class SemanticAction {
     }
 
 
-    /**
-     * initializer -> assignment_expression
-     */
-    public void initializer1(LeftNode p) {
-
-    }
-
-    /**
-     * initializer -> { initializer_list }
-     */
-    public void initializer2(LeftNode p) {
-
-    }
-
-    /**
-     * declaration_list -> declaration
-     */
-    public void declaration_list1(LeftNode p) {
-
-    }
-
-    /**
-     * declaration_list -> declaration_list declaration
-     * 弹出declaration_list1的nextInstr
-     */
-    public void declaration_list2(LeftNode p) {
-        Attribute instr2 = stack.pop();
-        Attribute instr1 = stack.pop();
-        stack.push(instr2);
-    }
-
-
-    //////////////////////////////////////////////////////////////
+    //////////////////////程序语句/////////////////////////////////
     //////////////////////////////////////////////////////////////
 
     /**
@@ -1265,21 +1261,71 @@ public class SemanticAction {
 
     /**
      * jump_statement -> return expression ;
-     * expression.addr
-     * expression.type
-     * jump待解决检查返回类型和实际类型不同的问题
+     * expression.addr(Des,value,Type),这里必须返回一个右值
+     * 在声明函数时，向栈中加入<函数名>作为其一个属性(),
+     * 在遇到return语句时将其弹出，并且可以检查返回的类型是否正确
+     * 如果将一个函数定义规约完成了函数名还没有弹出,
+     * 说明没有return,进行报错
      */
-    public void jump1(LeftNode p) {
-        Attribute addr = stack.pop();
-        Attribute type = stack.pop();
-        gen(new Quadruple("return", "", "", addr.getValue().toString()));
+    /**
+     * 找不到该属性时返回空
+     */
+    public Attribute getAttributeByName(String name) {
+        Deque<Attribute> temp = new LinkedList<>();
+        Attribute result = null;
+        while (!stack.isEmpty()) {
+            Attribute a = stack.pop();
+            if (!a.getName().equals(name)) {
+                temp.push(a);
+            } else {
+                result = a;
+                break;
+            }
+        }
+        while (!temp.isEmpty()) {
+            stack.push(temp.pop());
+        }
+        return result;
+    }
+
+    /**
+     * jump_statement -> return expression ;
+     */
+    public void jump1(LeftNode p) throws Exception {
+        String funcName = getAttributeByName("funcName").getValue().toString();
+        Expr addr = (Expr) stack.pop().getValue();
+        Expr addrS = getRightAddrValueOne(addr);
+        SymbolTable st = symTabStack.peek();
+        SymbolTableEntry ste = st.getUsedEntry(funcName);
+        assert ste.getType() instanceof Function;
+        Function function = (Function) ste.getType();
+        if (function.getReturnType().equals(addrS.getType())) {
+            gen(new Quadruple("return", getRightAddrValueOne(addr).getValue(), "", ""));
+            List<Integer> nextList = new ArrayList<>();
+            stack.push(new Attribute("jumpNextList", nextList));
+        } else {
+            throw new Exception(errorHandle(funcName + "返回值类型错误", p.getValue().getLineNum()));
+        }
+
     }
 
     /**
      * jump_statement -> return ;
      */
-    public void jump2(LeftNode p) {
-        gen(new Quadruple("return", "", "", ""));
+    public void jump2(LeftNode p) throws Exception {
+        String funcName = getAttributeByName("funcName").getValue().toString();
+        SymbolTable st = symTabStack.peek();
+        SymbolTableEntry ste = st.getUsedEntry(funcName);
+        assert ste.getType() instanceof Function;
+        Function function = (Function) ste.getType();
+        if (function.getReturnType().equals(Type.Void)) {
+            gen(new Quadruple("return", "", "", ""));
+            List<Integer> nextList = new ArrayList<>();
+            stack.push(new Attribute("jumpNextList", nextList));
+        } else {
+            throw new Exception(errorHandle(funcName + "返回值类型错误", p.getValue().getLineNum()));
+        }
+
     }
 
     /**
@@ -1303,51 +1349,51 @@ public class SemanticAction {
      */
     public void selection1(LeftNode p) {
         List<Integer> s1List = (List<Integer>) stack.pop().getValue();
-        Integer instr = (Integer) stack.pop().getValue();
+        Integer ifInstr = (Integer) stack.pop().getValue();
         List<Integer> trueList = (List<Integer>) stack.pop().getValue();
         List<Integer> falseList = (List<Integer>) stack.pop().getValue();
         List<Integer> sList = merge(s1List, falseList);
-        backPatch(trueList, instr);
-        stack.push(new Attribute("nextList", sList));
+        backPatch(trueList, ifInstr);
+        stack.push(new Attribute("SelectNextList", sList));
     }
 
     /**
      * M7 -> epsilon
-     * 增加一条未填goto语句，并获取其标号拉链
+     * 增加一条未填goto语句，并获取其标号拉链,待填
      */
     public void m7(LeftNode p) {
         List<Integer> li = makeList(getNextInstr());
         stack.push(new Attribute("nextList", li));
         gen(new Quadruple("goto", "", "", "_"));
-        m6(p);
     }
 
     /**
-     * selection_statement -> if M9 ( expression ) M6 statement else M6 statement
+     * selection_statement -> if M9 ( expression ) M6 statement M7 else M6 statement
      * statement.nextList
-     * M6.instr2
+     * M6.elseInstr
      * M7.nextList
      * statement.nextList
+     * M6.ifInstr
      * expression.trueList
      * expression.falseList
      */
     public void selection2(LeftNode p) {
         List<Integer> s2List = (List<Integer>) stack.pop().getValue();
-        Integer instr2 = (Integer) stack.pop().getValue();
+        Integer elseInstr = (Integer) stack.pop().getValue();
         List<Integer> m7List = (List<Integer>) stack.pop().getValue();
         List<Integer> s1List = (List<Integer>) stack.pop().getValue();
-        Integer instr1 = (Integer) stack.pop().getValue();
+        Integer ifInstr = (Integer) stack.pop().getValue();
         List<Integer> trueList = (List<Integer>) stack.pop().getValue();
         List<Integer> falseList = (List<Integer>) stack.pop().getValue();
-        backPatch(trueList, instr1);
-        backPatch(falseList, instr2);
+        backPatch(trueList, ifInstr);
+        backPatch(falseList, elseInstr);
         List<Integer> temp = merge(s1List, m7List);
         List<Integer> sList = merge(temp, s2List);
-        stack.push(new Attribute("nextList", sList));
+        stack.push(new Attribute("SelectNextList", sList));
     }
 
     /**
-     *
+     * M10 ->
      */
     public void m10(LeftNode p) {
         m6(p);
@@ -1367,12 +1413,11 @@ public class SemanticAction {
         Integer instr2 = (Integer) stack.pop().getValue();
         List<Integer> trueList = (List<Integer>) stack.pop().getValue();
         List<Integer> falseList = (List<Integer>) stack.pop().getValue();
-        Integer instr1 = (Integer) stack.pop().getValue();
+        Integer begin = (Integer) stack.pop().getValue();
         backPatch(trueList, instr2);
-        backPatch(s1List, instr1);
-        List<Integer> sList = falseList;
-        gen(new Quadruple("goto", "", "", "" + instr1));
-        stack.push(new Attribute("nextList", sList));
+        backPatch(s1List, begin);
+        gen(new Quadruple("goto", "", "", "" + begin));
+        stack.push(new Attribute("iterationNextList", falseList));
     }
 
     /**
@@ -1386,11 +1431,9 @@ public class SemanticAction {
         List<Integer> trueList = (List<Integer>) stack.pop().getValue();
         List<Integer> falseList = (List<Integer>) stack.pop().getValue();
         List<Integer> s1List = (List<Integer>) stack.pop().getValue();
-        Integer instr = (Integer) stack.pop().getValue();
-        backPatch(trueList, instr);
-        List<Integer> sList = falseList;
-        gen(new Quadruple("goto", "", "", "" + instr));
-        stack.push(new Attribute("nextList", sList));
+        Integer begin = (Integer) stack.pop().getValue();
+        backPatch(trueList, begin);
+        stack.push(new Attribute("iterationNextList", falseList));
     }
 
 }

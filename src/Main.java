@@ -20,7 +20,7 @@ public class Main {
         TokenAnalysis ta = new TokenAnalysis(FilePath);
         ta.tokenAnalysis();
         ta.PrintResult(ta.getResult());
-        boolean a = true;
+        boolean a = false;
         Parser parser;
         if (a) {
             parser = new Parser("src/parser/grammar/grammar6.txt");
@@ -31,6 +31,7 @@ public class Main {
                     false);
         }
         if (ta.getError().size() > 0) {
+            ta.PrintResult(ta.getError());
             throw new Exception("请先处理词法错误!");
         } else {
             List<RightNode> lexerResult = parser.transFromOldLexer(ta.getResult());
@@ -39,6 +40,7 @@ public class Main {
                 Node root = parser.getAnalTree(nodes);
                 System.out.println(parser.printAnalysisTree(root));
             }
+            parser.printThreeAddressCode();
         }
     }
 }

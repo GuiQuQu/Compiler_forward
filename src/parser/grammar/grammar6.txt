@@ -12,6 +12,7 @@ real
 [
 ]
 ,
+.
 ;
 {
 }
@@ -59,6 +60,9 @@ program -> program external_declaration
 external_declaration -> function_definition
 external_declaration -> declaration
 # 声明语句
+declaration_list -> declaration %% declaration_list1
+declaration_list -> declaration_list declaration %% declaration_list2
+
 declaration -> type_specifier ; %% declaration1
 declaration -> type_specifier init_declarator_list ; %% declaration2
 type_specifier -> int %% type_specifier1
@@ -68,38 +72,31 @@ type_specifier -> char %% type_specifier4
 type_specifier -> void %% type_specifier5
 type_specifier -> struct_specifier
 #结构体
-struct_specifier -> struct id { struct_declaration_list }
-struct_specifier -> struct { struct_declaration_list }
-struct_specifier -> struct id
-struct_declaration_list -> struct_declaration
-struct_declaration_list -> struct_declaration_list struct_declaration
-struct_declaration -> type_specifier struct_declarator_list ;
-struct_declarator_list -> struct_declarator
-struct_declarator_list -> struct_declarator_list , struct_declarator
-struct_declarator -> declarator
+
+struct_specifier -> struct id { struct_declaration_list } %% struct_specifier1
+struct_specifier -> struct { struct_declaration_list } %% struct_specifier2
+struct_specifier -> struct id %% struct_specifier3
+struct_declaration_list -> struct_declaration %% struct_declaration_list1
+struct_declaration_list -> struct_declaration_list struct_declaration %% struct_declaration_list2
+struct_declaration -> type_specifier var_declarator ; %% struct_declaration1
 #
 init_declarator_list -> init_declarator
 init_declarator_list -> init_declarator_list , init_declarator
-init_declarator -> declarator %% init_declarator1
-init_declarator -> declarator = initializer %% init_declarator2
-declarator -> direct_declarator
-direct_declarator -> id %% direct_declarator1
-direct_declarator -> direct_declarator [ constant_expression ] %% direct_declarator2
-direct_declarator -> direct_declarator ( parameter_list )
-direct_declarator -> direct_declarator ( ) %% m3
-# 不在使用direct_declarator后面的m3
-# 形参列表
-parameter_list -> parameter_declaration
-parameter_list -> parameter_list , parameter_declaration
-parameter_declaration -> type_specifier declarator
-# 函数定义
-function_definition -> type_specifier declarator compound_statement %% function_definition1
-# 变量初始化
-initializer -> assignment_expression
-# 单元素数组
-constant_expression -> conditional_expression
-declaration_list -> declaration
-declaration_list -> declaration_list declaration %% declaration_list2
+
+init_declarator -> var_declarator %% init_declarator1
+init_declarator -> var_declarator = conditional_expression %% init_declarator2
+
+var_declarator -> id %% var_declarator1
+var_declarator -> var_declarator [ integer ] %% var_declarator2
+# 函数
+function_definition -> type_specifier func_declarator compound_statement %% function_definition1
+
+func_declarator -> id ( parameter_list ) %% func_declarator1
+func_declarator -> id ( ) %% func_declarator2
+parameter_declaration -> type_specifier var_declarator %% parameter_declaration1
+parameter_list -> parameter_declaration %% parameter_list1
+parameter_list -> parameter_list , parameter_declaration %% parameter_list2
+
 # 程序块
 M5 -> %% m5
 compound_statement -> { }
@@ -112,36 +109,35 @@ statement -> iteration_statement
 statement -> expression_statement
 statement -> jump_statement
 statement_list -> statement
-# statement_list -> statement_list M6 statement %% statement_list2 这里m6规约有问题
-statement_list -> statement_list statement %% statement_list2
+statement_list -> statement_list M6 statement %% statement_list2
+# jump语句没有nextList
 jump_statement -> return expression ; %% jump1
 jump_statement -> return ; %% jump2
 # 选择语句
-# 文法具有二义性,可以手动消除二义性，m6 读取下一行 m7 m9指明是控制流 m10=m6+m9
+# 文法具有二义性,可以手动消除二义性，m6 读取下一行 m7 m9对表达式指明是控制流 m10=m6+m9
 M6 ->  %% m6
 M7 ->  %% m7
 M9 ->  %% m9
 M10 -> %% m10
 selection_statement -> if M9 ( expression ) M6 statement %% selection1
-# selection_statement -> if M9 ( expression ) M6 statement M7 else M6 statement %% selection2 M7规约有问题
-selection_statement -> if M9 ( expression ) M6 statement else M6 statement %% selection2
+selection_statement -> if M9 ( expression ) M6 statement M7 else M6 statement %% selection2
 # 迭代语句
 iteration_statement -> while M10 ( expression ) M6 statement %% iteration1
 iteration_statement -> do M6 statement while M9 ( expression ) ; %% iteration2
 # 表达式
-expression_statement -> ; %% expressionS1
+# expression_statement -> ; %% expressionS1
 expression_statement -> expression ; %% expressionS2
 expression -> assignment_expression
 expression -> expression , assignment_expression
 # 赋值表达式
 assignment_expression -> conditional_expression
-assignment_expression -> unary_expression assignment_operator assignment_expression %% assignment2
+assignment_expression -> unary_expression = assignment_expression %% assignment2
 # 赋值符号
-assignment_operator -> = %% assignmentOp1
-assignment_operator -> += %% assignmentOp2
-assignment_operator -> -= %% assignmentOp3
-assignment_operator -> *= %% assignmentOp4
-assignment_operator -> /= %% assignmentOp5
+# assignment_operator -> = %% assignmentOp1
+# assignment_operator -> += %% assignmentOp2
+# assignment_operator -> -= %% assignmentOp3
+# assignment_operator -> *= %% assignmentOp4
+# assignment_operator -> /= %% assignmentOp5
 # 条件表达式
 M8 -> %% m8
 conditional_expression -> logical_or_expression
@@ -169,8 +165,8 @@ multiplicative_expression -> multiplicative_expression / unary_expression %% mul
 multiplicative_expression -> multiplicative_expression % unary_expression %% multiplicative4
 # 一元表达式
 unary_expression -> postfix_expression
-unary_expression -> ++ postfix_expression %% unary2
-unary_expression -> -- postfix_expression %% unary3
+# unary_expression -> ++ postfix_expression %% unary2
+# unary_expression -> -- postfix_expression %% unary3
 unary_expression -> unary_operator unary_expression %% unary4
 unary_operator -> + %% unaryOp1
 unary_operator -> - %% unaryOp2
@@ -178,10 +174,11 @@ unary_operator -> ! %% unaryOp3
 # 后缀
 postfix_expression -> primary_expression
 postfix_expression -> postfix_expression [ expression ] %% postfix2
-postfix_expression -> postfix_expression ( ) %% postfix3
-postfix_expression -> postfix_expression ( argument_expression_list ) %% postfix4
-postfix_expression -> postfix_expression ++ %% postfix5
-postfix_expression -> postfix_expression -- %% postfix6
+postfix_expression -> id ( ) %% postfix3
+postfix_expression -> id ( argument_expression_list ) %% postfix4
+# postfix_expression -> postfix_expression ++ %% postfix5
+# postfix_expression -> postfix_expression -- %% postfix6
+postfix_expression -> postfix_expression . id %% postfix7
 argument_expression_list -> assignment_expression %% argument_expression1
 argument_expression_list -> argument_expression_list , assignment_expression %% argument_expression2
 # 基本

@@ -28,4 +28,9 @@ public class Attribute {
     public void setValue(Object value) {
         this.value = value;
     }
+
+    @Override
+    public String toString() {
+        return name + ",value.class=" + value.getClass().getSimpleName()+",value="+value;
+    }
 }

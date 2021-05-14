@@ -60,28 +60,48 @@ public class Quadruple {
             case "-":
             case "*":
             case "/":
-            case "&&":
-            case "||":
             case "%":
                 sb.append(result).append(" = ").append(arg1).append(" ").append(op).append(" ").append(arg2);
                 break;
             //单目运算符
             case "minus":
-            case "=":
                 sb.append(result).append(" = ").append(op).append(" ").append(arg1);
+            case "=":
+               sb.append(result).append(" ").append(op).append(" ").append(arg1);
                 break;
             case "goto":
                 sb.append(op).append(" ").append(result);
-            case "j>":
-            case "j<":
-            case "j<=":
-            case "j>=":
-            case "j==":
-            case "j!=":
-                sb.append("if ").append(op.substring(1, op.length())).append(" ").append("goto ").append(result);
+                break;
+            case ">":
+            case "<":
+            case "<=":
+            case ">=":
+            case "==":
+            case "!=":
+                sb.append("if ").append(arg1).append(op).append(arg2).append(" goto ").append(result);
+                break;
+            case "=[]":
+            case "[]=":
+            case ".=":
+            case "=.":
+                sb.append(result).append(" = ").append(arg1);
                 break;
             case "param":
+            case "return":
                 sb.append(op).append(" ").append(arg1);
+                break;
+            case "call":
+                if (result.length() > 0) {
+                    sb.append(result).append("=").append(op).append(" ").append(arg1).append(" ").append(arg2);
+                } else {
+                    sb.append(op).append(" ").append(arg1).append(" ").append(arg2);
+                }
+                break;
+            case "comment":
+                sb.append(result).append(".");
+                break;
+            default:
+                sb.append(toString());
                 break;
         }
         return sb.toString();
@@ -89,6 +109,6 @@ public class Quadruple {
 
     @Override
     public String toString() {
-        return "\'" + op + "\' " + arg1 + " " + arg2 + " " + result;
+        return "[\'" + op + "\' " + arg1 + " " + arg2 + " " + result+"]";
     }
 }
