@@ -7,7 +7,7 @@ void func1(int a,int b){ /*过程声明*/
     int b[5] ;  /*数组声明*/
     int c=a+b[2]; /*数组元素引用和普通元素引用*/
     /*已使用M     M3,M5,M6,M7,M8*/
-    return;
+    return ;
 }
 
 int main(){

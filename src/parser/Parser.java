@@ -55,11 +55,11 @@ public class Parser {
 
     public Parser(String grammar_path) throws Exception {
         this.grammar = new Grammar(grammar_path);
-//        priority.put(new RightNode("else"), 1);  // else 悬空问题
-        priority.put(new RightNode("M5"), 1); // M5 { 规约冲突
+        priority.put(new RightNode("else"), 1);  // else 悬空问题
+        priority.put(new RightNode("M5"), 1); // M5 { 优先规约m5
         priority.put(new RightNode("M7"), 1); // M7 else 优先规约m7
-        priority.put(new RightNode("M11"), 1); // M7 else 优先规约m7
-        priority.put(new RightNode("M3"), 1); // M7 else 优先规约m7
+        priority.put(new RightNode("M11"), 1); // M7 else 优先规约m11
+        priority.put(new RightNode("M3"), 1); // M7 else 优先规约m3
         grammar.augmentGrammar();
         grammar.calFIRST();
         createLR1AnalysisTable();
@@ -309,6 +309,7 @@ public class Parser {
         }
         return actionList;
     }
+
 
     public void createLR1AnalysisTable() throws Exception {
         getLR1Items();

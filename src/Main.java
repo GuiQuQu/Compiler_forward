@@ -20,7 +20,7 @@ public class Main {
         TokenAnalysis ta = new TokenAnalysis(FilePath);
         ta.tokenAnalysis();
         ta.PrintResult(ta.getResult());
-        boolean a = false;
+        boolean a = true;
         Parser parser;
         if (a) {
             parser = new Parser("src/parser/grammar/grammar6.txt");
@@ -44,5 +44,8 @@ public class Main {
         }
     }
 }
+
+
+
 
 

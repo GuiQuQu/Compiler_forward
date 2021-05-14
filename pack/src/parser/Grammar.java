@@ -18,7 +18,7 @@ public class Grammar {
     private RightNode startSym; // 开始符号
     private Set<RightNode> terminator = new HashSet<>(); //终结符
     private Set<RightNode> no_terminator = new HashSet<>(); //非终结符
-    private Set<RightNode> symbol = new HashSet<>();
+    private Set<RightNode> symbol = new HashSet<>(); //终结符集和非终结符集
     private List<LeftNode> productions = new ArrayList<>(); //产生式
     private File grammar; //文法文件
     private Map<RightNode, Set<RightNode>> firsts = new HashMap<>(); //first集
@@ -42,7 +42,7 @@ public class Grammar {
         }
         line = reader.readLine();
         while (!(line.trim().equals("*production"))) {
-            if (line.length() > 0 && line.charAt(0) == '#') {
+            if (line.length() > 0 && line.charAt(0) == '#' || line.trim().length() == 0) {
                 line = reader.readLine();
                 continue;
             }
@@ -62,24 +62,36 @@ public class Grammar {
             }
             String[] strings = line.trim().split("\\s+");
             //左节点
+            // program -> external_declaration %% m2
+            // program -> %% m1
             LeftNode left = addLeftNode(strings[0]);
             no_terminator.add(left.getValue());
             //右节点
             List<RightNode> right = new ArrayList<>();
-            for (int i = 2; i < strings.length; i++) {
-                if (strings[i].equals("epsilon")) { //处理空串表达式
-                    right.add(RightNode.epsilon);
-                } else {
-                    RightNode rn = new RightNode(strings[i]);
-                    if (terminator.contains(rn)) {
-                        rn.setTerminator(true);
+            //非空产生式
+            if (strings.length > 2 && !strings[2].equals("%%")) {
+                for (int i = 2; i < strings.length; i++) {
+                    //语义动作
+                    if ("%%".equals(strings[i])) {
+                        left.setSemanticAction(strings[i + 1]);
+                        i++;
                     } else {
-                        rn.setTerminator(false);
-                        no_terminator.add(rn);
+                        RightNode rn = new RightNode(strings[i]);
+                        if (terminator.contains(rn)) {
+                            rn.setTerminator(true);
+                        } else {
+                            rn.setTerminator(false);
+                            no_terminator.add(rn);
+                        }
+                        right.add(rn);
                     }
-                    right.add(rn);
                 }
             }
+            // program -> %% m1
+            if (strings.length > 2 && strings[2].equals("%%")) {
+                left.setSemanticAction(strings[3]);
+            }
+            // program ->
             left.setRight(right);
             line = reader.readLine();
         }
@@ -157,6 +169,48 @@ public class Grammar {
         augmentedStart = lf.getValue();
     }
 
+    public void calFIRST() {
+        System.out.println("FIRST....");
+        //init,建立所有终结符和非终结符的FIRST集合
+        createValueForFirst();
+        //终结符的FIRST集是他本身
+        for (RightNode teNode : terminator) {
+            addItemToFirst(teNode, teNode);
+        }
+        boolean change = true;
+        //计算非终极符的FIRST集合
+        while (change) {
+            change = false;
+            for (RightNode noTeNode : no_terminator) {
+                for (LeftNode production : productions) {
+                    //寻找该非终结符的所有产生式
+                    if (production.getValue().equals(noTeNode)) {
+                        if (production.getRight().size() == 0) { //X ->
+                            if (addItemToFirst(noTeNode, RightNode.epsilon))
+                                change = true;
+                        } else { //X -> Y1Y2...
+                            int i = 0;
+                            while (i < production.getRight().size()) {
+                                if (!production.getRight().get(i).equals(noTeNode)) {
+                                    if (addItemToFirstWithoutEpsilon(noTeNode, firsts.get(production.getRight().get(i))))
+                                        change = true;
+                                }
+                                if (firsts.get(production.getRight().get(i)).contains(RightNode.epsilon))
+                                    i++;
+                                else  //不能产生空串就退出
+                                    break;
+                            }
+                            if (i == production.getRight().size()) { // Y1,Y2...所有产生式都为空
+                                if (addItemToFirst(noTeNode, RightNode.epsilon))
+                                    change = true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     public void calFIRST2() {
         System.out.println("FIRST...");
         //init
@@ -184,7 +238,7 @@ public class Grammar {
         }
     }
 
-    public void calFIRST() {
+    public void calFIRST3() {
         System.out.println("FIRST...");
         //init
         createValueForFirst();
@@ -197,13 +251,12 @@ public class Grammar {
             haveChange = false;
             for (RightNode node : no_terminator) { //对于每一个非终结符，寻该他的所有产生式
                 for (LeftNode production : productions) {
-                    if (production.getValue().equals(node)) { //该产生式左部是改非终结符
-                        //空串产生式
-                        if (production.getRight().size() == 1 && production.getRight().get(0).equals(RightNode.epsilon)) {
+                    if (production.getValue().equals(node)) { //该产生式左部是该非终结符
+                        //X ->
+                        if (production.getRight().size() == 0) {
                             if (addItemToFirst(production.getValue(), RightNode.epsilon)) {
                                 haveChange = true;
                             }
-
                             continue;
                         }
                         // X->Y1Y2...
@@ -219,7 +272,7 @@ public class Grammar {
                                 if (firsts.get(production.getRight().get(i)).contains(RightNode.epsilon)) { //该非终结符可以产生空串
                                     i++;
                                 } else {
-                                    //不是自己
+                                    //不是自己(X-> Y1X...)
                                     if (!production.getValue().equals(production.getRight().get(i))) {
                                         if (addItemToFirst(production.getValue(), firsts.get(production.getRight().get(i))))
                                             haveChange = true;
@@ -228,11 +281,11 @@ public class Grammar {
                                 }
                             }
                         }
+                        //Y1Y2...均可生成空串
                         if (i == production.getRight().size()) {
-                            if (addItemToFirst(production.getValue(), RightNode.epsilon)){
+                            if (addItemToFirst(production.getValue(), RightNode.epsilon)) {
                                 haveChange = true;
                             }
-
                         }
                     }
                 }
@@ -252,57 +305,6 @@ public class Grammar {
         return sb.toString();
     }
 
-    public void calFIRST1() {
-        System.out.println("正在计算语法的First集...");
-        //计算终结符的first集
-        createValueForFirst(); //init
-        for (RightNode rightNode : terminator) {
-            addItemToFirst(rightNode, rightNode);
-        }
-        boolean isOK = false;
-        int old_size;
-        int new_size;
-        int num = 0;
-        while (!isOK) {
-            isOK = true;
-            if (num % 100000 == 0) {
-                System.out.println("num=" + num);
-            }
-            for (LeftNode production : productions) {
-                //空串
-                if (production.getRight().get(0).equals(RightNode.epsilon)) {
-                    if (!addItemToFirst(production.getValue(), RightNode.epsilon)) {
-                        isOK = false;
-                    }
-                } else {
-                    // X-> Y1Y2Y3....
-                    int i = 0;
-                    while (true) {
-                        if (firsts.get(production.getRight().get(i)).contains(RightNode.epsilon)) {
-                            i++;
-                        } else {
-                            Set<RightNode> Xset = firsts.get(production.getValue());
-                            Set<RightNode> Yiset = firsts.get(production.getRight().get(i));
-                            old_size = Xset.size();
-                            Xset.addAll(Yiset);
-                            new_size = Xset.size();
-                            if (new_size > old_size) {
-                                isOK = false;
-                            }
-                            break;
-                        }
-                        if (i == production.getRight().size()) {
-                            addItemToFirst(production.getValue(), RightNode.epsilon);
-                            isOK = false;
-                            break;
-                        }
-                    }
-                }
-            }
-            num++;
-        }
-    }
-
     private void createValueForFirst() {
         for (RightNode rightNode : terminator) {
             Set<RightNode> set = new HashSet<>();
@@ -312,6 +314,15 @@ public class Grammar {
             Set<RightNode> set = new HashSet<>();
             firsts.put(rightNode, set);
         }
+    }
+
+    private boolean addItemToFirstWithoutEpsilon(RightNode rn, Set<RightNode> Yiset) {
+        Set<RightNode> Xset = firsts.get(rn);
+        int old_size = Xset.size();
+        Set<RightNode> temp = new HashSet<>(Yiset);
+        temp.remove(RightNode.epsilon);
+        Xset.addAll(temp);
+        return Xset.size() > old_size; // true 发生改变
     }
 
     private boolean addItemToFirst(RightNode rn, Set<RightNode> Yiset) {
